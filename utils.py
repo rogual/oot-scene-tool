@@ -395,5 +395,5 @@ class Image:
 
     @property
     def render_path(self):
-        os.makedirs(app.render_dir, exist_ok=True)
-        return f'{app.render_dir}/{self.name}.png'
+        os.makedirs(app.scene.render_dir, exist_ok=True)
+        return f'{app.scene.render_dir}/{self.name}.png'

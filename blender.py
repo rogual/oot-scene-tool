@@ -1,6 +1,7 @@
 
 from importlib import reload
 
+import contextlib
 import subprocess
 import sys
 import os
@@ -8,8 +9,7 @@ import re
 
 import bpy
 
-project_dir = '/Users/me/Projects/z64/decomp-mod'
-oot_dir = '/Users/me/Projects/Contrib/oot'
+oot_scene_tool_dir = os.path.dirname(__file__)
 make = '/usr/local/bin/gmake'
 
 
@@ -56,7 +56,7 @@ def reload_this_tool():
     to_reload = []
     for name, module in sys.modules.items():
         file = getattr(module, '__file__', None)
-        if file and file.startswith(project_dir):
+        if file and file.startswith(oot_scene_tool_dir):
 
             # Blender does some cute shit where a module has a path
             # inside a Blend file even though a Blend file is not
@@ -77,19 +77,20 @@ def reload_this_tool():
 reload_this_tool()
 
 
-# Configure it
-app.oot_dir = oot_dir
-app.project_dir = project_dir
-app.render_dir = f'{project_dir}/renders'
-
-
 # GO GO GO
 # --------
 log = utils.log
 
-app.scene = scene.Scene(
-    bpy.context.scene
-)
+
+@contextlib.contextmanager
+def with_scene():
+    app.scene = scene.Scene(
+        bpy.context.scene
+    )
+    scene_split.split(app.scene)
+    yield
+    app.scene = None
+
 
 operators = []
 
@@ -117,7 +118,8 @@ def define_operator(fn):
         bl_idname = f'foon.{snake}'
         bl_label = title
         def execute(self, context):
-            fn() # <-- The actual thing we wanted to do
+            with with_scene():
+                fn() # <-- The actual thing we wanted to do
             return {'FINISHED'}   
 
     Op.__name__ = camel
@@ -179,7 +181,7 @@ def move_actors_to_rooms():
 def render_maps():
     map_ = scene_map.SceneMap(app.scene)
     map_.render_all()
-    z64c.install_diffs(oot_dir, map_.diffs)
+    z64c.install_diffs(app.scene.oot_dir, map_.diffs)
 
 
 @define_operator
@@ -191,7 +193,7 @@ def export_scene():
 def compile_oot():
     subprocess.check_call(
         [make, '-j', 'NON_MATCHING=1'],
-        cwd=oot_dir,
+        cwd=app.scene.oot_dir,
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
@@ -200,8 +202,6 @@ def compile_oot():
 @define_operator
 def init_fast64():
     app.scene.blender_scene.gameEditorMode = 'OOT'
-    app.scene.blender_scene.ootDecompPath = oot_dir
-
 
 
 bpy.types.Scene.rgaSceneName = bpy.props.StringProperty(
@@ -235,4 +235,5 @@ class OOT_SCENE_TOOL_PT_panel(bpy.types.Panel):
             col.operator(operator.bl_idname)
 
         col.prop(context.scene, "rgaSceneName")
+        col.prop(context.scene, "rgaProjectDir")
 

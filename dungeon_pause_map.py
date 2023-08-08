@@ -218,7 +218,7 @@ class DungeonPauseMap:
         # There's no explicit "number of floors" array; figure it out
         # from the texture index offsets
         sFloorTexIndexOffset = z64c.read_array(
-            app.oot_dir,
+            app.scene.oot_dir,
             'src/code/z_map_data.c',
             'sFloorTexIndexOffset'
         )
@@ -397,7 +397,18 @@ class DungeonPauseMap:
         all_palettes = set(range(1, 14))
         room_palettes = self.room_palettes = {}
 
+        ok = True
         for floor in self.scene.floors:
+            if floor.rooms == []:
+                print(f"Error: {floor} has no rooms")
+                ok = False
+        if not ok:
+            raise Exception()
+
+        for floor in self.scene.floors:
+            print(f"Floor: {floor}")
+            for room in floor.rooms:
+                print(f" Room: {room}")
 
             floor_used_palettes = set(
                 x for x in [
@@ -424,7 +435,17 @@ class DungeonPauseMap:
                     floor_available_palettes.remove(room_palette)
 
         # Check we did it okay
-        assert all(room in room_palettes for room in self.scene.rooms)
+        if not all(room in room_palettes for room in self.scene.rooms):
+            print(f"Palettes assigned to rooms:")
+            for room, palette in room_palettes.items():
+                print(f"    {room}: palette {palette}")
+            print(f"Errors:")
+            for room in self.scene.rooms:
+                if room not in room_palettes:
+                    print(f"        {room} has not been assigned a palette.")
+            raise Exception("Palette fail")
+
+
         for floor in self.scene.floors:
             assert len(floor.rooms) == len(set(room_palettes[x] for x in floor.rooms))
 

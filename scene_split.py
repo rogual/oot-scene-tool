@@ -36,13 +36,12 @@ def split(scene):
             obj.parent = None
             bpy.data.objects.remove(obj) 
 
-
     for face in geom_obj.data.polygons:
         face.hide = False
 
     for room in scene.rooms:
         room_geom = duplicate_object(geom_obj, collection)
-        room_geom.name = f'{room} Geometry'
+        room_geom.name = f'ExpGen {room} Geometry'
 
         # Reparent to fast64_obj
         for vertex in room_geom.data.vertices:

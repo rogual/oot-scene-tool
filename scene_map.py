@@ -2,7 +2,7 @@ import os
 
 from .utils import *
 
-from . import z64c, app
+from . import z64c, app, materials
 
 class SceneMap:
     '''
@@ -207,7 +207,7 @@ class SceneMap:
             clipped_obj.ignore_collision = True
 
             # TODO: Create this material
-            mat_room = bpy.data.materials['DMSurface']
+            mat_room = materials.get_surface()
 
             clipped_obj.data.materials.clear()
             clipped_obj.data.materials.append(mat_room)

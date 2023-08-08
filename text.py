@@ -13,7 +13,7 @@ def render_text(text, out_size, path):
     Belly"). The outlines on these are not compressed, though, they're
     nice and even all round. I can't find a good way to do this in
     PIL, so if this function needs to compress text, outlines will be
-    ugly.
+    ugly. We may have to ditch PIL to do this properly.
     """
 
     stroke_width = 2

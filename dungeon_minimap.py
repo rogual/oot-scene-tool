@@ -47,7 +47,7 @@ class DungeonMinimap:
         # All tex index offsets could potentially need to change.
         # Recalculate them from the minimap counts.
         sDgnMinimapCount = z64c.read_array(
-            app.oot_dir,
+            app.scene.oot_dir,
             'src/code/z_map_data.c',
             'sDgnMinimapCount'
         )
@@ -123,7 +123,7 @@ class DungeonMinimap:
 
         # MAP MARKS
         gMapMarkDataTable = z64c.read_array(
-            app.oot_dir,
+            app.scene.oot_dir,
             'src/overlays/misc/ovl_map_mark_data/z_map_mark_data.c',
             'gMapMarkDataTable'
         )

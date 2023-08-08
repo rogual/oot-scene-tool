@@ -6,6 +6,7 @@ import bpy
 import mathutils
 
 from . import z64c
+from . import materials
 
 from .utils import *
 
@@ -13,7 +14,6 @@ from .utils import *
 class Scene:
     def __init__(self, blender_scene):
         fast64_scene_object = blender_scene.ootSceneExportObj
-        fast64_scene_option = blender_scene.ootSceneExportSettings.option
         fast64_oot_path = blender_scene.ootDecompPath
 
         self.blender_scene = blender_scene
@@ -23,11 +23,25 @@ class Scene:
         self.helpers = empty_collection("OOT Scene Tool Helper Objects")
         self.helper_collections = {}
 
-        self.display_name = "Temple of Sadness"
+    @property
+    def display_name(self):
+        return self.blender_scene.rgaSceneName or 'Temple of Sadness'
+
+    @property
+    def oot_dir(self):
+        return bpy.path.abspath(self.blender_scene.ootDecompPath)
+
+    @property
+    def render_dir(self):
+        return f'{self.oot_dir}/build/oot-scene-tool'
+
+    @property
+    def fast64_scene_option(self):
+        return self.blender_scene.ootSceneExportSettings.option
 
     @cached_property
     def index(self):
-        return z64c.get_scene_index(self.oot_path, fast64_scene_option)
+        return z64c.get_scene_index(self.oot_path, self.fast64_scene_option)
 
     def blender_to_oot_pos(self, blender_pos):
         scale = self.blender_scene.ootBlenderScale
@@ -77,14 +91,14 @@ class Scene:
         planes = floor_planes + [ztop]
 
         return [
-            Floor(index, low, high)
+            Floor(self, index, low, high)
             for index, (low, high) in enumerate(itertools.pairwise(planes))
         ]
 
     @cached_property
     def rooms(self):
         return [
-            Room(obj)
+            Room(self, obj)
             for obj in self.fast64_object.children
             if obj.type == 'EMPTY' and obj.ootEmptyType == 'Room'
         ]
@@ -99,7 +113,8 @@ class Scene:
 
 
 class Room:
-    def __init__(self, fast64_object):
+    def __init__(self, scene, fast64_object):
+        self.scene = scene
         self.fast64_object = fast64_object
 
     def __str__(self):
@@ -127,7 +142,7 @@ class Room:
 
         return [
             Layer(self, floor)
-            for floor in scene.floors
+            for floor in self.scene.floors
             if floor.z_range.intersection(bounds.z)
         ]
 
@@ -163,7 +178,8 @@ class Layer:
 
 
 class Floor:
-    def __init__(self, index, z0, z1):
+    def __init__(self, scene, index, z0, z1):
+        self.scene = scene
         self.index = index
         self.z0 = z0
         self.z1 = z1
@@ -186,19 +202,19 @@ class Floor:
         obj.display_type = 'WIRE'
 
         # TODO: Create this material
-        mat_void = bpy.data.materials['DMVoid']
+        mat_void = materials.get_void()
 
         obj.data.materials.clear()
         obj.data.materials.append(mat_void)
 
-        move_to_collection(obj, scene.helper_collection('Floor Volumes'))
+        move_to_collection(obj, self.scene.helper_collection('Floor Volumes'))
         return obj
 
     @cached_property
     def layers(self):
         return [
             layer
-            for room in scene.rooms
+            for room in self.scene.rooms
             for layer in room.layers
             if layer.floor is self
         ]
