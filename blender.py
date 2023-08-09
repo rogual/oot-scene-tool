@@ -9,6 +9,8 @@ import re
 
 import bpy
 
+from .text import render_text
+
 oot_scene_tool_dir = os.path.dirname(__file__)
 make = '/usr/local/bin/gmake'
 
@@ -87,8 +89,12 @@ def with_scene():
     app.scene = scene.Scene(
         bpy.context.scene
     )
-    scene_split.split(app.scene)
+
+    if scene_split.can_split(app.scene):
+        scene_split.split(app.scene)
+
     yield
+
     app.scene = None
 
 
@@ -182,6 +188,20 @@ def render_maps():
     map_ = scene_map.SceneMap(app.scene)
     map_.render_all()
     z64c.install_diffs(app.scene.oot_dir, map_.diffs)
+
+
+@define_operator
+def render_title_card():
+    if not app.scene.display_name:
+        raise Exception("Please set the scene's display name.")
+
+    name = z64c.get_english_title_card_asset_name(
+        app.scene.oot_dir,
+        app.scene.enum_name
+    )
+    oot = app.scene.oot_dir
+    path = f'{oot}/assets/textures/place_title_cards/{name}.ia8.png'
+    render_text(app.scene.display_name, (144, 24), path)
 
 
 @define_operator

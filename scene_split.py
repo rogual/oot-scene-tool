@@ -15,6 +15,10 @@ def room_catchment_boxes(room):
             yield child
 
 
+def can_split(scene):
+    return 'Geom' in bpy.data.objects
+
+    
 def split(scene):
 
     # The object to split into rooms

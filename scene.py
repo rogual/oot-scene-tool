@@ -39,9 +39,13 @@ class Scene:
     def fast64_scene_option(self):
         return self.blender_scene.ootSceneExportSettings.option
 
+    @property
+    def enum_name(self):
+        return self.fast64_scene_option
+
     @cached_property
     def index(self):
-        return z64c.get_scene_index(self.oot_path, self.fast64_scene_option)
+        return z64c.get_scene_index(self.oot_path, self.enum_name)
 
     def blender_to_oot_pos(self, blender_pos):
         scale = self.blender_scene.ootBlenderScale

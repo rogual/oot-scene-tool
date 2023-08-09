@@ -1,8 +1,20 @@
 import re
 import shutil
 
+from . import z64xml
 from dataclasses import dataclass, field
 from .utils import *
+
+
+@dataclass
+class SceneTableEntry:
+    index: int
+    segment: str
+    title_card_segment: str
+    enum_name: str
+    draw_config: str
+    unk1: int
+    unk2: int
 
 
 @dataclass
@@ -181,6 +193,39 @@ def find_array_item(text, find_index):
     return found_start, found_end
     
 
+@yield_list
+def get_scene_table(oot):
+    path = f'{oot}/include/tables/scene_table.h'
+    with open(path, 'rt') as f:
+        text = f.read()
+
+    for row in re.findall(rf'^/\* (0x..) \*/ DEFINE_SCENE\((.*?)\)', text, flags=re.MULTILINE):
+
+        xs = [x.strip() for x in row[1].split(',')]
+        row = [row[0]] + xs
+
+        yield SceneTableEntry(*row)
+
+
+def get_scene_table_entry(oot, enum_name):
+    for x in get_scene_table(oot):
+        if x.enum_name == enum_name:
+            return x
+    raise Exception(f'{enum_name} is not a scene')
+
+
+def get_english_title_card_asset_name(oot, enum_name):
+    entry = get_scene_table_entry(oot, enum_name)
+    segment = entry.title_card_segment
+
+    xml = z64xml.Z64XML(
+        f'{oot}/assets/xml/textures/place_title_cards.xml'
+    )
+    file_ = xml.get_file(segment)
+    texture = file_.textures[0]
+    return texture.node.attrib['OutName']
+    
+    
 def get_scene_index(oot, enum_name):
     assert enum_name.startswith('SCENE_')
 

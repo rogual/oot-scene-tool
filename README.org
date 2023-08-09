@@ -11,16 +11,15 @@ I haven't packaged this up as a proper add-on yet. Here's how I load it:
 
 - Configure the decomp path and all other Fast64 scene settings as normal.
 - In the OOT Scene Tool panel, set your scene's display name. This is only used to generate the dungeon map's title image right now, but can be used in the future for title cards and world map captions.
-
+  
 * Setting up your Blender scene
 
-This tool expects you to set up your scene a certain way. This could be made more lenient, but for now:
-
-** Level Geometry
+* Features in detail
+** Room splitting
 
 Fast64 exports one room per object, but I find it easier to model my whole scene as a single object, so this tool performs "Room Splitting".
 
-Model your scene as a single object. This object must be called "Geom". Then define "Room Boxes" to specify how it will be split into rooms.
+Model your scene as a single object. Call this object =Geom=. Then define "Room Boxes" to specify how it will be split into rooms.
 
 *** Defining room boxes
 
@@ -28,7 +27,7 @@ Make a collection called =Room Boxes=. In this collection, create one or more bo
 
 Rooms are numbered starting at 0. The bounding objects for room 0 must be called =Bounds0.0=, =Bounds0.1=, and so on. Those for room 1 must be called =Bounds1.0=, =Bounds1.1=, etc.
 
-At export, any polygons inside any of Room 0's bounding boxes will become part of room 0, and likewise for the other rooms.
+At export, any polygons that intersect any of Room 0's bounding boxes will become part of room 0, and likewise for the other rooms.
 
 You'll probably only need one bounding box for most rooms, but you might need several if a room is a funny shape and you need fine control of which polygons become part of the room.
 
@@ -61,6 +60,12 @@ Press "Render Maps" to create and export the maps.
 - The map textures will be written to =$OOT/build/oot-scene-tool= where =$OOT= is your decomp dir.
 - The decomp code will be updated to use them.
 - The tool will also find and update the map mark data and all other map-related data.
+
+** Title cards
+
+Set your scene's display name in the OOT Scene Tool panel, then press “Render Title Card”.
+
+The scene's name will be rendered to a texture in an approximation of the style OOT uses. This texture will be installed into the appropriate place within the OOT decomp directory and will replace the vanilla title card for your scene.
 
 ** Overworld minimaps
 

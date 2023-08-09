@@ -58,7 +58,8 @@ def render_text(text, out_size, path):
     )
 
     out_image.save(path)
-    
+
+
 
 if __name__ == '__main__':
     render_text('Spoopy Temple', (96, 16), 'text.png')
