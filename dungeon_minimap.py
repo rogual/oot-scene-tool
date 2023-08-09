@@ -8,6 +8,7 @@ import PIL.ImageFilter
 
 from . import app
 from . import image_utils
+from . import minimap_utils
 from . import z64c
 
 from .scene_map import MapCamera, Image
@@ -29,10 +30,30 @@ class DungeonMinimapPage:
 class DungeonMinimap:
     '''
     The minimap for a dungeon. Contains a complete set of minimap pages.
+
+    -- MINIMAP (DUNGEON) --
+        - Room compass offset
+        - sRoomCompassOffsetX
+        - sRoomCompassOffsetY
+
+    - Number of minimaps (1 or more per room)
+        sDgnMinimapCount
+
+    - Index range of minimap textures from map_i_static
+        sDgnMinimapTexIndexOffset
+
+    - Layer switching table
+        "Room" here refers to minimaps, not rooms.
+        sSwitchEntryCount
+        sSwitchFromRoom
+        sSwitchFromFloor
+        sSwitchToRoom
     '''
     def __init__(self, scene_map):
         self.scene_map = scene_map
         self.scene = scene_map.scene
+        self.index = self.scene_map.dungeon_index
+        assert self.index is not None
 
     @cached_property
     @yield_list
@@ -40,7 +61,7 @@ class DungeonMinimap:
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sDgnMinimapCount',
-            self.scene.index,
+            self.index,
             len(self.pages)
         )
 
@@ -51,7 +72,7 @@ class DungeonMinimap:
             'src/code/z_map_data.c',
             'sDgnMinimapCount'
         )
-        sDgnMinimapCount[self.scene.index] = len(self.pages)
+        sDgnMinimapCount[self.index] = len(self.pages)
         sDgnMinimapTexIndexOffset = [
             sum(sDgnMinimapCount[0:i])
             for i in range(10)
@@ -65,8 +86,12 @@ class DungeonMinimap:
         # Output world-to-compass-mark transforms. These tell OOT
         # how to transform objects' world positions to draw the
         # red and yellow compass arrows.
+        minimap_pos = (204, 140)
+        minimap_size = (96, 85)
         transforms = [
-            get_world_to_compass_mark_transform(
+            minimap_utils.get_world_to_compass_mark_transform(
+                minimap_pos,
+                minimap_size,
                 page.camera.camera_pos,
                 page.camera.camera_scale,
                 page.shift
@@ -77,7 +102,7 @@ class DungeonMinimap:
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sRoomCompassOffsetX',
-            self.scene.index,
+            self.index,
             [
                 int(round(transform[0][2]))
                 for transform in transforms
@@ -87,7 +112,7 @@ class DungeonMinimap:
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sRoomCompassOffsetY',
-            self.scene.index,
+            self.index,
             [
                 int(round(transform[1][2]))
                 for transform in transforms
@@ -114,7 +139,7 @@ class DungeonMinimap:
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sDgnCompassInfo',
-            self.scene.index,
+            self.index,
             [
                 int(scale_x_recip),
                 int(scale_y_recip),
@@ -127,7 +152,7 @@ class DungeonMinimap:
             'src/overlays/misc/ovl_map_mark_data/z_map_mark_data.c',
             'gMapMarkDataTable'
         )
-        map_mark_array_name = gMapMarkDataTable[self.scene.index]
+        map_mark_array_name = gMapMarkDataTable[self.index]
 
         map_mark_data = []
         
@@ -139,7 +164,8 @@ class DungeonMinimap:
 
             chest_mark_data = []
 
-            transform = get_world_to_96x85_minimap_transform(
+            transform = minimap_utils.get_world_to_minimap_transform(
+                (96, 85), # Minimap size
                 page.camera.camera_pos,
                 page.camera.camera_scale,
                 page.shift
@@ -211,14 +237,14 @@ class DungeonMinimap:
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sSwitchEntryCount',
-            self.scene.index,
+            self.index,
             len(layer_switches)
         )
 
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sSwitchFromFloor',
-            self.scene.index,
+            self.index,
             [
                 # This is correct despite apparent from/to mismatch.
                 # Decomp calls it "from" because we're switching "from" the
@@ -236,7 +262,7 @@ class DungeonMinimap:
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sSwitchFromRoom',
-            self.scene.index,
+            self.index,
             [
                 layer_page_index(from_layer)
                 for from_layer, to_layer in layer_switches
@@ -246,7 +272,7 @@ class DungeonMinimap:
         yield z64c.CArrayItem(
             'src/code/z_map_data.c',
             'sSwitchToRoom',
-            self.scene.index,
+            self.index,
             [
                 layer_page_index(to_layer)
                 for from_layer, to_layer in layer_switches
@@ -258,7 +284,7 @@ class DungeonMinimap:
         # directory.
         map_i_static_pngs = [
             f'assets/textures/map_i_static/'
-            f'_custom_scene{self.scene.index}'
+            f'_custom_scene{self.index}'
             f'_room{page.layer.room.index}'
             f'_floor{page.layer.floor.index}.i4.png'
 
@@ -280,13 +306,13 @@ class DungeonMinimap:
         yield z64c.ReplaceIncludes(
             path='assets/textures/map_i_static/map_i_static.c',
             names=[
-                f'gScene{self.scene.index}'
+                f'gScene{self.index}'
                 f'Room{page.layer.room.index}'
                 f'Floor{page.layer.floor.index}MinimapTex'
                 for page in self.pages
             ],
             includes=map_i_static_includes,
-            first_index=sDgnMinimapTexIndexOffset[self.scene.index]
+            first_index=sDgnMinimapTexIndexOffset[self.index]
         )
                 
 
@@ -320,12 +346,13 @@ class DungeonMinimap:
                 MapCamera(
                     cam_pos,
                     cam_scale,
+                    Vec2(96, 85),
                     collection,
-                    Image(key=('miniraw', self.scene.index, layer.room.index, layer.floor.index))
+                    Image(key=('miniraw', self.index, layer.room.index, layer.floor.index))
                 ),
                 final_image=Image(key=(
                     'minimap',
-                    self.scene.index,
+                    self.index,
                     layer.room.index,
                     layer.floor.index
                 ))
@@ -333,246 +360,146 @@ class DungeonMinimap:
 
 
     def render_all(self):
-        log("Render MINIMAP cameras")
+        log("Render DUNGEON MINIMAP cameras")
         for page in self.pages:
             self.scene_map.render_map_camera(page.camera)
 
-        log("Process MINIMAP cameras")
+        log("Process DUNGEON MINIMAP cameras")
         for page in self.pages:
-
-            raw_rgba = PIL.Image.open(page.camera.image.render_path)
-            raw_void, raw_surface, _, raw_alpha = raw_rgba.split()
-
-            out_image = PIL.Image.new('P', raw_alpha.size)
-            out_image.putpalette(image_utils.ci4_palette)
-
-            w, h = out_image.size
-
-            # Fill, outline, and find bounds
-            x0 = None
-            y0 = None
-            x1 = None
-            y1 = None
-            has_void = False
-            for y in range(h):
-                for x in range(w):
-                    p = (x, y)
-                    in_alpha = raw_alpha.getpixel(p)
-                    if in_alpha == 0:
-
-                        if any(
-                            image_utils.get(raw_alpha, (x+dx, y+dy), 0) != 0
-                            for (dx, dy) in image_utils.dirs8
-                        ):
-                            out_image.putpixel(p, 15)
-
-                            if x0 is None or p[0] < x0: x0 = p[0]
-                            if x1 is None or p[0] > x1: x1 = p[0]
-                            if y0 is None or p[1] < y0: y0 = p[1]
-                            if y1 is None or p[1] > y1: y1 = p[1]
+            page.shift = process_image(
+                page.camera.image.render_path,
+                page.final_image.render_path
+            )
 
 
-                    else:
-                        if raw_void.getpixel(p) > 128:
+def process_image(raw_path, processed_path):
+    """
+    Take a raw camera render and turn it into a stylized
+    map for use in the game.
 
-                            if any(
-                                image_utils.get(raw_surface, (x+dx, y+dy), 0) >= 128
-                                for (dx, dy) in image_utils.dirs8
-                            ):
-                                out_image.putpixel(p, 15)
-                            else:
-                                out_image.putpixel(p, 0)
+    This is only for dungeon minimaps; overworld minimaps
+    are different enough that they have their own function.
+    """
+    raw_rgba = PIL.Image.open(raw_path)
+    raw_void, raw_surface, _, raw_alpha = raw_rgba.split()
 
-                            has_void = True
+    out_image = PIL.Image.new('P', raw_alpha.size)
+    out_image.putpalette(image_utils.ci4_palette)
 
-                        else:
-                            out_image.putpixel(p, 4)
+    w, h = out_image.size
+
+    # Fill, outline, and find bounds
+    x0 = None
+    y0 = None
+    x1 = None
+    y1 = None
+    has_void = False
+    for y in range(h):
+        for x in range(w):
+            p = (x, y)
+            in_alpha = raw_alpha.getpixel(p)
+            if in_alpha == 0:
+
+                if any(
+                    image_utils.get(raw_alpha, (x+dx, y+dy), 0) != 0
+                    for (dx, dy) in image_utils.dirs8
+                ):
+                    out_image.putpixel(p, 15)
+
+                    if x0 is None or p[0] < x0: x0 = p[0]
+                    if x1 is None or p[0] > x1: x1 = p[0]
+                    if y0 is None or p[1] < y0: y0 = p[1]
+                    if y1 is None or p[1] > y1: y1 = p[1]
 
 
-            if x0 is None:
-                # Empty image
-                pass
-                
             else:
-                bounds = Rect.bounding_points(
-                    Vec2(x0, y0),
-                    Vec2(x1, y1)
-                )
+                if raw_void.getpixel(p) > 128:
 
-                bounds = bounds.expand(5)
+                    if any(
+                        image_utils.get(raw_surface, (x+dx, y+dy), 0) >= 128
+                        for (dx, dy) in image_utils.dirs8
+                    ):
+                        out_image.putpixel(p, 15)
+                    else:
+                        out_image.putpixel(p, 0)
 
-                bounds.size.x -= 1
-                bounds.size.y -= 1
+                    has_void = True
 
-                # Draw border
-                draw = PIL.ImageDraw.Draw(out_image)
-                draw.rectangle(
-                    ((bounds.min.x, bounds.min.y),
-                     (bounds.max.x, bounds.max.y)),
-                    outline=15
-                )
-
-                # Blur
-                halo = PIL.Image.new('L', out_image.size)
-                for y in range(h):
-                    for x in range(w):
-
-                        pix = max(raw_alpha.getpixel((x, y)),
-                                  out_image.getpixel((x, y)))
-
-                        if pix != 0 or any(
-                            image_utils.get(raw_alpha, (x+dx, y+dy), 0)
-                            for (dx, dy) in image_utils.dirs4
-                        ):
-                            halo.putpixel((x, y), 0xb0)
-
-                draw = PIL.ImageDraw.Draw(halo)
-                draw.rectangle(
-                    ((bounds.min.x, bounds.min.y),
-                     (bounds.max.x, bounds.max.y)),
-                    outline=0x10
-                )
-                halo = halo.filter(PIL.ImageFilter.GaussianBlur(1))
-
-                # Composite out_image onto its halo
-                for y in range(h):
-                    for x in range(w):
-                        p = out_image.getpixel((x, y))
-                        mask = raw_alpha.getpixel((x, y))
-                        if p != 0 or mask != 0:
-                            halo.putpixel((x, y), p * 16)
-
-                out_image = halo
-
-                # Shift to lower-right
-                shift_x = w - 2 - bounds.max.x
-                shift_y = h - 2 - bounds.max.y
-
-                page.shift = mathutils.Vector((shift_x, shift_y))
-
-                out_image = out_image.transform(
-                    (w, h),
-                    PIL.Image.AFFINE,
-                    (1, 0, -shift_x,
-                     0, 1, -shift_y),
-                    fillcolor=0
-                )
-
-            # ZAPD doesn't like grayscale PNGs
-            out_image = out_image.convert('RGB')
-            out_image.save(page.final_image.render_path)
+                else:
+                    out_image.putpixel(p, 4)
 
 
-def get_world_to_compass_mark_transform(cam_pos, cam_scale_x, shift):
-    '''
+    if x0 is None:
+        # Empty image
+        pass
 
-    OOT draws compass marks (red and yellow arrows) in what we'll call
-    "compass mark space", which maps to the screen as follows:
+    else:
+        bounds = Rect.bounding_points(
+            Vec2(x0, y0),
+            Vec2(x1, y1)
+        )
 
-         -1600,-1200
-         +---------------------+
-         |                     |
-         |                     |
-         |             +-----+ |
-         |             |     | |
-         |             +-----+ |
-         +---------------------+1600,1200
+        bounds = bounds.expand(5)
 
-    We want the compass marks to end up inside the minimap at the lower
-    right.
+        bounds.size.x -= 1
+        bounds.size.y -= 1
 
-    The minimap is drawn to the screen, in normal 320x240 screen space,
-    at 204,140 and is 96x85.
+        # Draw border
+        draw = PIL.ImageDraw.Draw(out_image)
+        draw.rectangle(
+            ((bounds.min.x, bounds.min.y),
+                (bounds.max.x, bounds.max.y)),
+            outline=15
+        )
 
-        Basic screen coords
-        0,0
-        +---------------------+
-        |                     |
-        |          204,140    |
-        |             +-----+ |
-        |             |     | |
-        |             +-----+.|..........300,225
-        +---------------------+320,240
+        # Blur
+        halo = PIL.Image.new('L', out_image.size)
+        for y in range(h):
+            for x in range(w):
 
-    We need to supply the transformation from world space to compass
-    mark space, so OOT knows where to draw the compass marks.
+                pix = max(raw_alpha.getpixel((x, y)),
+                            out_image.getpixel((x, y)))
 
-    We do this by projecting from world space to minimap texture space,
-    then to 320x240 screen space, then finally to compass mark space.
+                if pix != 0 or any(
+                    image_utils.get(raw_alpha, (x+dx, y+dy), 0)
+                    for (dx, dy) in image_utils.dirs4
+                ):
+                    halo.putpixel((x, y), 0xb0)
 
-    cam_pos-cam_scale/2
-    +---------------------+
-    |                     |
-    |                     |
-    |         +cam_pos    |
-    |                     |
-    |                     |
-    +---------------------+cam_pos+cam_scale/2
+        draw = PIL.ImageDraw.Draw(halo)
+        draw.rectangle(
+            ((bounds.min.x, bounds.min.y),
+                (bounds.max.x, bounds.max.y)),
+            outline=0x10
+        )
+        halo = halo.filter(PIL.ImageFilter.GaussianBlur(1))
 
-    Basic screen coords
-    0,0
-    +---------------------+
-    |                     |
-    |          204,140    |
-    |             +-----+ |
-    |             |     | |
-    |             +-----+.|..........300,225
-    +---------------------+320,240
+        # Composite out_image onto its halo
+        for y in range(h):
+            for x in range(w):
+                p = out_image.getpixel((x, y))
+                mask = raw_alpha.getpixel((x, y))
+                if p != 0 or mask != 0:
+                    halo.putpixel((x, y), p * 16)
 
-    CompassMark
-    -1600,-1200
-    +---------------------+
-    |                     |
-    |                     |
-    |             +-----+ |
-    |             |     | |
-    |             +-----+.|
-    +---------------------+1600,1200
+        out_image = halo
 
+        # Shift to lower-right
+        shift_x = w - 2 - bounds.max.x
+        shift_y = h - 2 - bounds.max.y
 
-    We want map_mark_offset_x
-    '''
+        shift = mathutils.Vector((shift_x, shift_y))
 
-    world_to_texture = get_world_to_96x85_minimap_transform(
-        cam_pos,
-        cam_scale_x,
-        shift
-    )
+        out_image = out_image.transform(
+            (w, h),
+            PIL.Image.AFFINE,
+            (1, 0, -shift_x,
+                0, 1, -shift_y),
+            fillcolor=0
+        )
 
-    texture_to_screen = mathutils.Matrix([
-        [ 1,  0,  204],
-        [ 0,  1,  140],
-        [ 0,  0,    1],
-    ])
+    # ZAPD doesn't like grayscale PNGs
+    out_image = out_image.convert('RGB')
+    out_image.save(processed_path)
 
-    screen_to_compass_mark = map_rect(
-        Rect(Vec2(0, 0), Vec2(320, 240)),
-        Rect(Vec2(-1600, 1200), Vec2(3200, -2400))
-    )
-
-    world_to_compass_mark = (
-        screen_to_compass_mark @
-        texture_to_screen @
-        world_to_texture
-    )
-
-    return world_to_compass_mark
-
-
-def get_world_to_96x85_minimap_transform(cam_pos, cam_scale_x, shift):
-    cam_scale_y = cam_scale_x * 85/96
-    cam_scale = Vec2(cam_scale_x, cam_scale_y)
-
-    cam_pos = Vec2(cam_pos[0], cam_pos[1])
-
-    # Convert cam scale & pos from Blender to OOT units
-    cam_scale = cam_scale * 10
-    cam_pos = cam_pos * 10
-    cam_pos.y *= -1
-
-    return map_rect(
-        Rect.centered(cam_pos, cam_scale),
-        Rect(Vec2(0, 0), Vec2(96, 85)) + shift
-    )
-
-
+    return shift

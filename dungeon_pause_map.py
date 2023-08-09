@@ -123,6 +123,7 @@ class DungeonPauseMap:
                         MapCamera(
                             cam_pos,
                             cam_scale,
+                            resolution=Vec2(96, 85),
                             collection=self.scene_map.clipped_layer_geometry(layer),
                             image=Image(key=('pause_layer', self.scene.index, floor.index, layer.room.index))
                         )

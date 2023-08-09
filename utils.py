@@ -293,6 +293,9 @@ class Vec2:
     def __mul__(self, f):
         return Vec2(self.x * f, self.y * f)
 
+    def __iter__(self):
+        return iter([self.x, self.y])
+
 
 @dataclass
 class Vec3:

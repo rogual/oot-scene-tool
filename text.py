@@ -1,9 +1,22 @@
+import functools
+
 import PIL.Image
 import PIL.ImageFont
 import PIL.ImageDraw
 
+from .utils import log
 
-def render_text(text, out_size, path):
+
+@functools.cache
+def get_font(typeface, size):
+    path = {
+        'chiaro': 'FOT-ChiaroStd-B.otf',
+        'kokinedo': 'FOT-KokinEdo Std EB.otf'
+    }[typeface]
+    return PIL.ImageFont.truetype(path, size)
+
+
+def render_text(text, out_size, path, typeface='chiaro'):
     """
     Render a text string to an image. Useful for title cards and other
     UI text.
@@ -15,11 +28,12 @@ def render_text(text, out_size, path):
     PIL, so if this function needs to compress text, outlines will be
     ugly. We may have to ditch PIL to do this properly.
     """
+    log(f"Render text “{text}” to {path}")
 
     stroke_width = 2
 
     font_size = out_size[1]
-    font = PIL.ImageFont.truetype('FOT-ChiaroStd-B.otf', font_size)
+    font = get_font(typeface, font_size)
 
     text_size = font.getbbox(text, stroke_width=stroke_width)[2:]
     text_size = (

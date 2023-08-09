@@ -40,41 +40,6 @@ class SceneMap:
         sSkullFloorIconY
         Redundant with sBossFloor; always 51 - 14 * sBossFloor[i]
 
-
-
-
-
-    -- MINIMAP (DUNGEON) --
-        - Room compass offset
-        - sRoomCompassOffsetX
-        - sRoomCompassOffsetY
-
-    - Number of minimaps (1 or more per room)
-        sDgnMinimapCount
-
-    - Index range of minimap textures from map_i_static
-        sDgnMinimapTexIndexOffset
-
-    - Layer switching table
-        "Room" here refers to minimaps, not rooms.
-        sSwitchEntryCount
-        sSwitchFromRoom
-        sSwitchFromFloor
-        sSwitchToRoom
-
-
-
-
-    -- MINIMAP (OVERWORLD) --
-        - sOwMinimapTexSize
-        - sOwMinimapTexOffset
-        - sOwMinimapPosX/Y
-        - sOwCompassInfo
-        - sOwMinimapWidth/Height
-        - sOwEntranceIconPosX/Y
-        - sOwEntranceFlag
-
-
     So we're installing stuff into the OOT folder
     Changes are:
     - Diffs to C files
@@ -160,34 +125,87 @@ class SceneMap:
     def __init__(self, scene):
         from .dungeon_minimap import DungeonMinimap
         from .dungeon_pause_map import DungeonPauseMap
+        from .overworld_minimap import OverworldMinimap
 
         self.scene = scene
 
-        self.minimap = DungeonMinimap(self)
-        self.pause_map = DungeonPauseMap(self)
+        if self.dungeon_index is not None:
+            self.minimap = DungeonMinimap(self)
+            self.pause_map = DungeonPauseMap(self)
+
+        elif self.overworld_index is not None:
+            self.minimap = OverworldMinimap(self)
+            self.pause_map = None
+            
+
+    @property
+    def dungeon_index(self):
+        try:
+            return [
+                'SCENE_DEKU_TREE',
+                'SCENE_DODONGOS_CAVERN',
+                'SCENE_JABU_JABU',
+                'SCENE_FOREST_TEMPLE',
+                'SCENE_FIRE_TEMPLE',
+                'SCENE_WATER_TEMPLE',
+                'SCENE_SPIRIT_TEMPLE',
+                'SCENE_SHADOW_TEMPLE',
+                'SCENE_BOTTOM_OF_THE_WELL',
+                'SCENE_ICE_CAVERN',
+            ].index(self.scene.enum_name)
+        except ValueError:
+            return None
+
+    @property
+    def overworld_index(self):
+        try:
+            return [
+                'SCENE_HYRULE_FIELD',
+                'SCENE_KAKARIKO_VILLAGE',
+                'SCENE_GRAVEYARD',
+                'SCENE_ZORAS_RIVER',
+                'SCENE_KOKIRI_FOREST',
+                'SCENE_SACRED_FOREST_MEADOW',
+                'SCENE_LAKE_HYLIA',
+                'SCENE_ZORAS_DOMAIN',
+                'SCENE_ZORAS_FOUNTAIN',
+                'SCENE_GERUDO_VALLEY',
+                'SCENE_LOST_WOODS',
+                'SCENE_DESERT_COLOSSUS',
+                'SCENE_GERUDOS_FORTRESS',
+                'SCENE_HAUNTED_WASTELAND',
+                'SCENE_HYRULE_CASTLE',
+                'SCENE_DEATH_MOUNTAIN_TRAIL',
+                'SCENE_DEATH_MOUNTAIN_CRATER',
+                'SCENE_GORON_CITY',
+                'SCENE_LON_LON_RANCH',
+                'SCENE_OUTSIDE_GANONS_CASTLE',
+            ].index(self.scene.enum_name)
+        except ValueError:
+            return None
 
     @property
     @yield_list
     def diffs(self):
 
-        z_map_data = 'src/code/z_map_data.c'
-
-        # Floor coords
+        # Floor coords (dungeons only).
         # High to low, front-padded with 9999.0f.
         # Last one is ignored.
-        yield z64c.CArrayItem(
-            z_map_data,
-            'sFloorCoordY',
-            self.scene.index,
-            pad_front(
-                list(reversed([floor.z0 * 10 for floor in self.scene.floors])),
-                8,
-                9999.0
+        if self.dungeon_index:
+            yield z64c.CArrayItem(
+                'src/code/z_map_data.c',
+                'sFloorCoordY',
+                self.scene.index,
+                pad_front(
+                    list(reversed([floor.z0 * 10 for floor in self.scene.floors])),
+                    8,
+                    9999.0
+                )
             )
-        )
 
         yield from self.minimap.diffs
-        yield from self.pause_map.diffs
+        if self.pause_map:
+            yield from self.pause_map.diffs
 
     @functools.lru_cache
     def clipped_layer_geometry(self, layer):
@@ -246,19 +264,23 @@ class SceneMap:
         cam.location.y = map_camera.camera_pos.y
         cam.location.z = 100
 
-        for obj in bpy.data.objects:
-            obj.hide_render = obj.name not in map_camera.collection.all_objects
+        if map_camera.collection:
+            for obj in bpy.data.objects:
+                obj.hide_render = obj.name not in map_camera.collection.all_objects
 
-        map_camera.collection.hide_render = False
+            map_camera.collection.hide_render = False
 
         cam.data.type = 'ORTHO'
         cam.data.ortho_scale = map_camera.camera_scale
         
-        bpy.context.scene.render.resolution_x = 96
-        bpy.context.scene.render.resolution_y = 85
+        bpy.context.scene.render.resolution_x = map_camera.resolution.x
+        bpy.context.scene.render.resolution_y = map_camera.resolution.y
         bpy.context.scene.render.engine = 'CYCLES'
 
-        # Disable antialiasing
+        # Transparent background
+        bpy.context.scene.render.film_transparent = True
+
+        # Disable antialiasing
         bpy.context.scene.cycles.samples = 1
         bpy.context.scene.cycles.use_adaptive_sampling = False
         bpy.context.scene.cycles.use_denoising = False
@@ -272,7 +294,8 @@ class SceneMap:
 
     def render_all(self):
         self.minimap.render_all()
-        self.pause_map.render_all()
+        if self.pause_map:
+            self.pause_map.render_all()
 
     def install(self):
         pass
@@ -292,5 +315,6 @@ class SceneMap:
 class MapCamera:
     camera_pos: object
     camera_scale: float
+    resolution: object
     collection: object
     image: object

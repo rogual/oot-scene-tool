@@ -224,8 +224,22 @@ def get_english_title_card_asset_name(oot, enum_name):
     file_ = xml.get_file(segment)
     texture = file_.textures[0]
     return texture.node.attrib['OutName']
+
+
+def get_english_position_name_asset_name(oot, enum_name):
+    entry = get_scene_table_entry(oot, enum_name)
+
+    xml = z64xml.Z64XML(
+        f'{oot}/assets/xml/textures/map_name_static.xml'
+    )
+    file_ = xml.get_file('map_name_static')
+
+    num_point_names = 36
+    texture = file_.textures[num_point_names + entry.index]
+
+    return texture.node.attrib['OutName']
     
-    
+
 def get_scene_index(oot, enum_name):
     assert enum_name.startswith('SCENE_')
 
@@ -331,22 +345,39 @@ def install_diffs(oot, diffs):
             with open(f'{oot}/{diff.path}', 'rt') as f:
                 c = f.read()
 
+            skip = diff.first_index
             includes = diff.includes[:]
             n = len(includes)
+            done = 0
+            log('---')
+            log(c)
+            log('---')
 
             def sub(m):
+                log(m)
+                log('=>', m.group(0))
+                nonlocal skip
+                nonlocal done
+                if skip:
+                    skip -= 1
+                    return m.group(0)
+
                 i = n - len(includes)
                 name = diff.names[i]
                 include = includes.pop(0)
+                done += 1
                 return f'u64 {name}[] = {{\n#include "{include}"\n}};'
 
             c = re.sub(
                 r'^u64 .*?\] = \{\n#include.*?\n\};',
                 sub,
                 c,
-                count=len(includes),
+                count=skip + len(includes),
                 flags=re.MULTILINE
             )
+
+            if done != n:
+                raise Exception(f"Only managed to replace {done} of {n} includes.")
 
             with open(f'{oot}/{diff.path}', 'wt') as f:
                 f.write(c)
