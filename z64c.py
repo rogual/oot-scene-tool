@@ -3,7 +3,7 @@ import shutil
 
 from . import z64xml
 from dataclasses import dataclass, field
-from .utils import *
+from .common_utils import *
 
 
 @dataclass

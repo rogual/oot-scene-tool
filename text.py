@@ -4,8 +4,7 @@ import PIL.Image
 import PIL.ImageFont
 import PIL.ImageDraw
 
-from .utils import log
-
+from .common_utils import *
 
 @functools.cache
 def get_font(typeface, size):
@@ -28,7 +27,7 @@ def render_text(text, out_size, path, typeface='chiaro'):
     PIL, so if this function needs to compress text, outlines will be
     ugly. We may have to ditch PIL to do this properly.
     """
-    log(f"Render text “{text}” to {path}")
+    log(f"Render {text} to {path}")
 
     stroke_width = 2
 

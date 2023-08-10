@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ET
 
-from .utils import *
+from .common_utils import *
 
 class Z64XML:
     def __init__(self, path):
