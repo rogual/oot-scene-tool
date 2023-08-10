@@ -65,7 +65,7 @@ def read_array(oot, path, decl):
 
 def find_c_array(c, decl):
     regex = (
-        r'^(?:[A-Za-z0-9_]+\*? )*' + 
+        r'^\s*(?:[A-Za-z0-9_]+\*? )*' + 
         re.escape(decl) +
         r'\[.*?\]*' +
         r'\s*=\s*\{' +
