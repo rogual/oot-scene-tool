@@ -16,6 +16,8 @@ from PyQt5.QtGui import *
 from .text import render_text
 from . import z64c
 
+app = QApplication(sys.argv)
+
 global_scale = 3
 global_offset = (108, 58)
 
@@ -42,6 +44,15 @@ bco = [
 
 map_name_static_c = f'assets/textures/map_name_static/map_name_static.c'
 kaleido_map_c = f'src/overlays/misc/ovl_kaleido_scope/z_kaleido_map_PAL.c'
+kaleido_scope_c = f'src/overlays/misc/ovl_kaleido_scope/z_kaleido_scope_PAL.c'
+
+
+def load_mask(path, color):
+    mask = QImage(path)
+    image = QImage(mask.size(), QImage.Format_ARGB32)
+    image.fill(color)
+    image.setAlphaChannel(mask)
+    return QPixmap(image)
 
 
 class AreaScenes:
@@ -59,6 +70,80 @@ class AreaScenes:
                 self.scenes_by_area[area].append(scene_name)
 
 area_scenes = AreaScenes()
+
+
+@dataclass
+class Sprite:
+    index: int
+    pos: object
+    size: object
+    kind: str
+    texture: object
+
+class Sprites:
+    def __init__(self):
+        pos_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AEC0')
+        pos_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AF78')
+        size_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AAEC')
+        size_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AB2C')
+        n = len(pos_x)
+
+        def sign(x):
+            return x if x < 0x8000 else x - 65536
+
+        pos_x = [sign(x) for x in pos_x]
+        pos_y = [sign(x) for x in pos_y]
+
+        kinds = (
+            ['cloud'] * 16 +
+            ['point'] * 12 +
+            ['unknown'] * 2 +
+            ['place_name'] +
+            ['current_position_label']
+        )
+
+        self.objects = [
+            Sprite(i, *row, None)
+            for i, row in enumerate(zip(
+                zip(pos_x, pos_y),
+                zip(size_x, size_y),
+                kinds
+            ))
+        ]
+
+        self.objects[30].texture = QPixmap(
+            f'{oot}/assets/textures/map_name_static/kakariko_village_position_name_eng.ia8.png'
+        )
+
+        self.objects[31].texture = load_mask(
+            f'{oot}/assets/textures/icon_item_nes_static/pause_current_position_eng.i4.png',
+            QColor(0, 0, 0, 255)
+        )
+
+    def objects_of_kind(self, kind):
+        if isinstance(kind, str):
+            kind = (kind,)
+        return [x for x in self.objects if x.kind in kind]
+
+sprites = Sprites()
+
+
+class DataItem(QGraphicsPixmapItem):
+    def __init__(self, data, pixmap):
+        super().__init__(pixmap)
+        self.data = data
+        self.setFlag(QGraphicsItem.ItemIsSelectable)
+        self.setFlag(QGraphicsItem.ItemIsMovable)
+
+
+
+class UILabels:
+    name = "UI Labels"
+    def __init__(self):
+        self.objects = sprites.objects_of_kind(('place_name', 'current_position_label'))
+
+ui_labels = UILabels()
+
 
 @dataclass
 class AreaBox:
@@ -106,6 +191,65 @@ class AreaBoxes:
 
 area_boxes = AreaBoxes()
 
+
+@dataclass
+class Cloud:
+    index: int
+    pos: object
+    size: object
+    texture_index: int
+    flag: int
+
+
+class Clouds:
+    def __init__(self):
+        pos_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AEC0')
+        pos_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AF78')
+        size_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AAEC')
+        size_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AB2C')
+        tex = z64c.read_array(oot, kaleido_map_c, 'cloudTexs')
+        flag = z64c.read_array(oot, kaleido_map_c, 'cloudFlagNums')
+        # If gBitFlags[flag] & save.worldMapAreaData == 0, cloud is drawn
+
+        def sign(x):
+            return x if x < 0x8000 else x - 65536
+
+        pos_x = [sign(x) for x in pos_x]
+        pos_y = [sign(x) for x in pos_y]
+
+        texture_indices = [
+            int(re.match(r'gWorldMapCloud(\d+)Tex', x).group(1)) - 1
+            for x in tex
+        ]
+
+        positions = list(zip(pos_x, pos_y))
+        sizes = list(zip(size_x, size_y))
+        self.clouds = [
+            Cloud(i, *row)
+            for i, row in enumerate(zip(positions, sizes, texture_indices, flag))
+        ]
+
+        self.texture_sizes = [None] * 16
+        for texture_index, size in zip(texture_indices, sizes):
+            self.texture_sizes[texture_index] = size
+
+    def get_cloud_texture_path(self, index):
+        return f'{oot}/assets/textures/icon_item_field_static/world_map_cloud_{index+1}.i4.png'
+
+    @functools.cache
+    def get_cloud_texture(self, index):
+        mask = QImage(self.get_cloud_texture_path(index))
+
+        image = QImage(mask.size(), QImage.Format_ARGB32)
+        # gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 235, 235, 235, pauseCtx->alpha);
+        image.fill(QColor(235, 235, 235, 255))
+        image.setAlphaChannel(mask)
+        return QPixmap(image)
+
+
+clouds = Clouds()
+
+
 def get_map_point_name_path(index):
     with open(f'{oot}/{map_name_static_c}', 'rt') as f:
         c = f.read()
@@ -127,6 +271,12 @@ def find_map_point_conditions(index):
     needle = f'pauseCtx->worldMapPoints[{index}] = '
     chunks = [x for x in chunks if needle in x]
     return chunks
+
+
+class CloudItem(QGraphicsPixmapItem):
+    def __init__(self, pixmap, cloud):
+        super().__init__(pixmap)
+        self.cloud = cloud
 
 
 class AreaBoxItem(QGraphicsPixmapItem):
@@ -207,6 +357,8 @@ class GraphicsViewExample(QMainWindow):
 
         self.code_font = QFont("Monaco", 8)
 
+        self.tables = [ui_labels]
+
         central = QWidget(self)
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0,0,0,0)
@@ -225,6 +377,8 @@ class GraphicsViewExample(QMainWindow):
         sidebar_layout.setContentsMargins(0,0,0,0)
 
         self.filters = QWidget(self)
+        sidebar_layout.addWidget(self.filters)
+
         filters_layout = QHBoxLayout(self.filters)
         filters_layout.setAlignment(Qt.AlignLeft)
         filters_layout.setContentsMargins(0,10,0,0)
@@ -236,7 +390,17 @@ class GraphicsViewExample(QMainWindow):
         show_boxes.setCheckState(2)
         show_boxes.stateChanged.connect(self.show_boxes)
         filters_layout.addWidget(show_boxes)
+        show_clouds = QCheckBox("Clouds", self)
+        show_clouds.setCheckState(2)
+        show_clouds.stateChanged.connect(self.show_clouds)
+        filters_layout.addWidget(show_clouds)
         sidebar_layout.addWidget(self.filters)
+
+        for table in self.tables:
+            show = QCheckBox(table.name, self)
+            show.setCheckState(2)
+            show.stateChanged.connect(lambda state: self.show_table(table, state))
+            filters_layout.addWidget(show)
 
         self.inspector_container = QWidget(self)
         sidebar_layout.addWidget(self.inspector_container)
@@ -254,6 +418,12 @@ class GraphicsViewExample(QMainWindow):
         self.scene.addItem(map_item)
 
         dot = QPixmap(f'{oot}/assets/textures/icon_item_field_static/world_map_dot.ia8.png')
+
+        self.load_clouds()
+        self.load_area_boxes()
+
+        for table in self.tables:
+            self.load(table)
 
         # Dots
         self.dot_item_positions = []
@@ -274,10 +444,6 @@ class GraphicsViewExample(QMainWindow):
             self.scene.addItem(dot_item)
             self.dots.append(dot_item)
 
-        self.setGeometry(100, 100, 400, 300)
-
-        self.load_area_boxes()
-
     def show_dots(self, show):
         for item in self.scene.items():
             if isinstance(item, DotItem):
@@ -286,6 +452,16 @@ class GraphicsViewExample(QMainWindow):
     def show_boxes(self, show):
         for item in self.scene.items():
             if isinstance(item, AreaBoxItem):
+                item.setVisible(show)
+
+    def show_clouds(self, show):
+        for item in self.scene.items():
+            if isinstance(item, CloudItem):
+                item.setVisible(show)
+
+    def show_table(self, table, show):
+        for item in self.scene.items():
+            if hasattr(item, 'table') and item.table is table:
                 item.setVisible(show)
 
     def load_area_boxes(self):
@@ -312,6 +488,64 @@ class GraphicsViewExample(QMainWindow):
             item.setScale(global_scale)
             item.setSelected(box in selected_boxes)
             self.scene.addItem(item)
+
+    def load(self, table):
+
+        old_items = [
+            item.cloud
+            for item in self.scene.selectedItems()
+            if hasattr(item, 'table') and item.table is table
+        ]
+
+        selected_rows = [
+            item.data
+            for item in old_items
+            if item.isSelected()
+        ]
+
+        for item in old_items:
+            self.scene.removeItem(item)
+
+        for data in table.objects:
+            pixmap = data.texture
+            item = DataItem(data, pixmap)
+            item.table = table
+            x, y = data.pos
+            y*=-1
+            x+=global_offset[0]
+            y+=global_offset[1]
+
+            pos = (x*global_scale, y*global_scale)
+            item.setPos(pos[0], pos[1])
+            item.setScale(global_scale)
+            item.setSelected(data in selected_rows)
+            self.scene.addItem(item)
+
+        
+    def load_clouds(self):
+        selected_clouds = [item.cloud for item in self.scene.selectedItems() if isinstance(item, CloudItem)]
+
+        for item in self.scene.items():
+            if isinstance(item, CloudItem):
+                self.scene.removeItem(item)
+
+        for cloud in clouds.clouds:
+            pixmap = clouds.get_cloud_texture(cloud.texture_index)
+            item = CloudItem(pixmap, cloud)
+            item.setFlag(QGraphicsItem.ItemIsSelectable)
+            item.setFlag(QGraphicsItem.ItemIsMovable)
+            x, y = cloud.pos
+            y*=-1
+            x+=global_offset[0]
+            y+=global_offset[1]
+
+            pos = (x*global_scale, y*global_scale)
+            item.setPos(pos[0], pos[1])
+            item.setScale(global_scale)
+            item.setSelected(cloud in selected_clouds)
+            print("Add cloud", cloud)
+            self.scene.addItem(item)
+
 
     def mouse_released(self):
         new_positions = [(item.pos().x(), item.pos().y()) for item in self.dots]
@@ -476,9 +710,24 @@ class GraphicsViewExample(QMainWindow):
                 area_scenes.scenes_by_area.get(item.box.index, [])
             ))
 
+        elif isinstance(item, CloudItem):
+            cloud = item.cloud
+            label = QLabel()
+            layout.addWidget(label)
+            label.setText(f"Cloud {cloud.index}")
+
+            label = QLabel()
+            layout.addWidget(label)
+            label.setText(f"Covers area {cloud.flag}")
+
+            label = QLabel()
+            label.setFont(self.code_font)
+            layout.addWidget(label)
+            label.setText('\n'.join(
+                area_scenes.scenes_by_area.get(cloud.flag, [])
+            ))
 
 
-app = QApplication(sys.argv)
 window = GraphicsViewExample()
 window.show()
 sys.exit(app.exec_())
