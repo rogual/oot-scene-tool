@@ -193,45 +193,40 @@ area_boxes = AreaBoxes()
 
 
 @dataclass
-class Cloud:
+class Cloud(Sprite):
     index: int
-    pos: object
-    size: object
     texture_index: int
     flag: int
 
 
 class Clouds:
+    name = "Clouds"
     def __init__(self):
-        pos_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AEC0')
-        pos_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AF78')
-        size_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AAEC')
-        size_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AB2C')
+        cloud_sprites = sprites.objects_of_kind('cloud')
         tex = z64c.read_array(oot, kaleido_map_c, 'cloudTexs')
-        flag = z64c.read_array(oot, kaleido_map_c, 'cloudFlagNums')
-        # If gBitFlags[flag] & save.worldMapAreaData == 0, cloud is drawn
-
-        def sign(x):
-            return x if x < 0x8000 else x - 65536
-
-        pos_x = [sign(x) for x in pos_x]
-        pos_y = [sign(x) for x in pos_y]
+        flags = z64c.read_array(oot, kaleido_map_c, 'cloudFlagNums')
 
         texture_indices = [
             int(re.match(r'gWorldMapCloud(\d+)Tex', x).group(1)) - 1
             for x in tex
         ]
 
-        positions = list(zip(pos_x, pos_y))
-        sizes = list(zip(size_x, size_y))
-        self.clouds = [
-            Cloud(i, *row)
-            for i, row in enumerate(zip(positions, sizes, texture_indices, flag))
+        self.objects = [
+            Cloud(
+                index=i,
+                pos=sprite.pos,
+                size=sprite.size,
+                kind=sprite.kind,
+                texture_index=texture_index,
+                texture=self.get_cloud_texture(texture_index),
+                flag=flag
+            )
+            for i, (sprite, texture_index, flag) in enumerate(zip(
+                    cloud_sprites,
+                    texture_indices,
+                    flags
+            ))
         ]
-
-        self.texture_sizes = [None] * 16
-        for texture_index, size in zip(texture_indices, sizes):
-            self.texture_sizes[texture_index] = size
 
     def get_cloud_texture_path(self, index):
         return f'{oot}/assets/textures/icon_item_field_static/world_map_cloud_{index+1}.i4.png'
@@ -357,7 +352,7 @@ class GraphicsViewExample(QMainWindow):
 
         self.code_font = QFont("Monaco", 8)
 
-        self.tables = [ui_labels]
+        self.tables = [clouds, ui_labels]
 
         central = QWidget(self)
         layout = QHBoxLayout(central)
@@ -390,16 +385,12 @@ class GraphicsViewExample(QMainWindow):
         show_boxes.setCheckState(2)
         show_boxes.stateChanged.connect(self.show_boxes)
         filters_layout.addWidget(show_boxes)
-        show_clouds = QCheckBox("Clouds", self)
-        show_clouds.setCheckState(2)
-        show_clouds.stateChanged.connect(self.show_clouds)
-        filters_layout.addWidget(show_clouds)
         sidebar_layout.addWidget(self.filters)
 
         for table in self.tables:
             show = QCheckBox(table.name, self)
             show.setCheckState(2)
-            show.stateChanged.connect(lambda state: self.show_table(table, state))
+            show.stateChanged.connect(lambda state, table=table: self.show_table(table, state))
             filters_layout.addWidget(show)
 
         self.inspector_container = QWidget(self)
@@ -419,7 +410,6 @@ class GraphicsViewExample(QMainWindow):
 
         dot = QPixmap(f'{oot}/assets/textures/icon_item_field_static/world_map_dot.ia8.png')
 
-        self.load_clouds()
         self.load_area_boxes()
 
         for table in self.tables:
@@ -452,11 +442,6 @@ class GraphicsViewExample(QMainWindow):
     def show_boxes(self, show):
         for item in self.scene.items():
             if isinstance(item, AreaBoxItem):
-                item.setVisible(show)
-
-    def show_clouds(self, show):
-        for item in self.scene.items():
-            if isinstance(item, CloudItem):
                 item.setVisible(show)
 
     def show_table(self, table, show):
@@ -519,31 +504,6 @@ class GraphicsViewExample(QMainWindow):
             item.setPos(pos[0], pos[1])
             item.setScale(global_scale)
             item.setSelected(data in selected_rows)
-            self.scene.addItem(item)
-
-        
-    def load_clouds(self):
-        selected_clouds = [item.cloud for item in self.scene.selectedItems() if isinstance(item, CloudItem)]
-
-        for item in self.scene.items():
-            if isinstance(item, CloudItem):
-                self.scene.removeItem(item)
-
-        for cloud in clouds.clouds:
-            pixmap = clouds.get_cloud_texture(cloud.texture_index)
-            item = CloudItem(pixmap, cloud)
-            item.setFlag(QGraphicsItem.ItemIsSelectable)
-            item.setFlag(QGraphicsItem.ItemIsMovable)
-            x, y = cloud.pos
-            y*=-1
-            x+=global_offset[0]
-            y+=global_offset[1]
-
-            pos = (x*global_scale, y*global_scale)
-            item.setPos(pos[0], pos[1])
-            item.setScale(global_scale)
-            item.setSelected(cloud in selected_clouds)
-            print("Add cloud", cloud)
             self.scene.addItem(item)
 
 
