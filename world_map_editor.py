@@ -1,3 +1,5 @@
+
+
 import sys
 import os
 import re
@@ -34,6 +36,27 @@ Positions in mapPageVtx[124 + i * 4], 4 verts each
 map_name_static_c = f'assets/textures/map_name_static/map_name_static.c'
 kaleido_map_c = f'src/overlays/misc/ovl_kaleido_scope/z_kaleido_map_PAL.c'
 kaleido_scope_c = f'src/overlays/misc/ovl_kaleido_scope/z_kaleido_scope_PAL.c'
+
+box_tint = QColor(100, 255,255,255)
+name_tint = QColor(150,255,255,255)
+
+def tint_pixmap(pixmap, color):
+    tinted = QImage(pixmap)
+    mask = QImage(tinted)
+
+    p = QPainter()
+    p.begin(mask)
+    p.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    p.fillRect(mask.rect(), color)
+    p.end()
+
+    p.begin(tinted)
+    p.setCompositionMode(QPainter.CompositionMode_Multiply)
+    p.drawImage(0, 0, mask)
+    p.end()
+
+    return QPixmap(tinted)
+
 
 
 def load_mask(path, color):
@@ -188,9 +211,9 @@ class UILabels(Table):
         for nlang, lang in [('nes', 'eng'), ('fra', 'fra'), ('ger', 'ger')]
     ]
 
-    place_name_texture = QPixmap(
+    place_name_texture = tint_pixmap(QPixmap(
         f'{oot}/assets/textures/map_name_static/kakariko_village_position_name_eng.ia8.png'
-    )
+    ), name_tint)
 
     def __init__(self):
         self.objects = [
@@ -206,26 +229,13 @@ class UILabels(Table):
 ui_labels = UILabels()
 
 
+
 class AreaBoxItem(DataItem):
     def __init__(self, box, pixmap):
         super().__init__(box, pixmap)
         self.box = box
 
-        self.tinted = QImage(pixmap)
-        self.mask = QImage(self.tinted)
-
-        p = QPainter()
-        p.begin(self.mask)
-        p.setCompositionMode(QPainter.CompositionMode_SourceIn)
-        p.fillRect(self.mask.rect(), QColor(0,255,255,255))
-        p.end()
-
-        p.begin(self.tinted)
-        p.setCompositionMode(QPainter.CompositionMode_Multiply)
-        p.drawImage(0, 0, self.mask)
-        p.end()
-
-        self.selected_pixmap = QPixmap(self.tinted)
+        self.selected_pixmap = tint_pixmap(pixmap, box_tint)
         self.pixmap = pixmap
 
     def paint(self, painter, option, widget):
@@ -454,7 +464,71 @@ class DotItem(DataItem):
         return super().itemChange(change, value)
 
 
+class NameTextureEditor(QWidget):
+    def __init__(self, c_path, include_index, decl, custom_path, size, *a, **kw):
+        super().__init__(*a, *kw)
+        self.custom_path = custom_path
+        self.c_path = c_path
+        self.size = size
+        self.include_index = include_index
+        self.decl = decl 
 
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0,0,0,0)
+
+        self.name_label = QLabel()
+        self.name_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.name_label)
+        self.load_name_image()
+
+        text_field = QLineEdit()
+        layout.addWidget(text_field)
+        text_field.textEdited.connect(self.text_edited)
+
+        new_name_label = self.new_name_label = QLabel()
+        new_name_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(new_name_label)
+
+        use_name_btn = QPushButton("Use")
+        use_name_btn.clicked.connect(self.use_new_name)
+        layout.addWidget(use_name_btn)
+
+    def get_path_from_c(self):
+        with open(f'{oot}/{self.c_path}', 'rt') as f:
+            c = f.read()
+
+        ms = list(re.finditer(r'^#include "([^"]*?\.inc\.c)"', c, re.MULTILINE))
+        m = ms[self.include_index]
+        path = m.group(1)
+        path = path.replace('.inc.c', '.png')
+        if path.startswith('assets'):
+            path = f'{oot}/{path}'
+        return path
+
+    def load_name_image(self):
+        image = QPixmap(self.get_path_from_c())
+        self.name_label.setPixmap(image)
+
+    def use_new_name(self):
+        path = self.custom_path
+        path = os.path.relpath(path, oot)
+        path_c = path.replace('.png', '.inc.c')
+        diff = z64c.ReplaceIncludes(
+            path=self.c_path,
+            first_index=self.include_index,
+            includes=[path_c],
+            names=[self.decl]
+        )
+        z64c.install_diffs(oot, [diff])
+        self.load_name_image()
+
+    def text_edited(self, new_text):
+        render_text(new_text, self.size, self.custom_path)
+
+        image = QPixmap(self.custom_path)
+        self.new_name_label.setPixmap(image)
+            
+        
 @dataclass
 class Dot:
     sprite: object
@@ -480,23 +554,15 @@ class Dot:
         label.setText(f"Map dot {index}")
         layout.addWidget(label)
 
-        name_label = self.name_label = QLabel()
-        name_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(name_label)
-        self.load_name_image()
-
-        # Change the name
-        text_field = QLineEdit()
-        layout.addWidget(text_field)
-        text_field.textEdited.connect(self.text_edited)
-
-        new_name_label = self.new_name_label = QLabel()
-        new_name_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(new_name_label)
-
-        use_name_btn = QPushButton("Use")
-        use_name_btn.clicked.connect(self.use_new_name)
-        layout.addWidget(use_name_btn)
+        name_edit = NameTextureEditor(
+            map_name_static_c,
+            index,
+            f'gPoint{index}NameENGTex',
+            f'{oot}/assets/textures/map_name_static/'
+                f'_custom_point{index}_name_eng.ia4.png',
+            (128, 16)
+        )
+        layout.addWidget(name_edit)
 
         conditions_widget = QWidget()
         conditions_layout = QVBoxLayout(conditions_widget)
@@ -509,40 +575,6 @@ class Dot:
             w.setFont(window.code_font)
             w.setText(textwrap.dedent(chunk))
             conditions_layout.addWidget(w)
-
-    def get_custom_name_path(self):
-        i = self.dot_index
-        return f'{oot}/assets/textures/map_name_static/_custom_point{i}_name_eng.ia4.png'
-
-    def text_edited(self, new_text):
-        if self.current_name_path:
-            path = self.get_custom_name_path()
-
-            print('do render', path)
-            render_text(new_text, (128, 16), path)
-
-            image = QPixmap(path)
-            self.new_name_label.setPixmap(image)
-
-    def load_name_image(self):
-        path = get_map_point_name_path(self.dot_index)
-        self.current_name_path = path
-            
-        image = QPixmap(path)
-        self.name_label.setPixmap(image)
-            
-    def use_new_name(self):
-        path = self.get_custom_name_path()
-        path = os.path.relpath(path, oot)
-        path_c = path.replace('.png', '.inc.c')
-        diff = z64c.ReplaceIncludes(
-            path=map_name_static_c,
-            first_index=self.index,
-            includes=[path_c],
-            names=[f'gPoint{self.index}NameENGTex']
-        )
-        z64c.install_diffs(oot, [diff])
-        self.load_name_image()
 
 
 class Dots(Table):
@@ -567,19 +599,6 @@ class Dots(Table):
 dots = Dots()
 
 
-def get_map_point_name_path(index):
-    with open(f'{oot}/{map_name_static_c}', 'rt') as f:
-        c = f.read()
-
-    ms = list(re.finditer(r'^#include "([^"]*?\.inc\.c)"', c, re.MULTILINE))
-    m = ms[index]
-    path = m.group(1)
-    path = path.replace('.inc.c', '.png')
-    if path.startswith('assets'):
-        path = f'{oot}/{path}'
-    return path
-
-
 def find_map_point_conditions(index):
     with open(f'{oot}/src/overlays/misc/ovl_kaleido_scope/z_kaleido_scope_PAL.c', 'rt') as f:
         c = f.read()
@@ -600,8 +619,6 @@ class GraphicsView(QGraphicsView):
 class WorldMapEditor(QMainWindow):
     def __init__(self):
         super().__init__()
-
-        self.current_name_path = None
 
         self.setWindowTitle("World Map Editor")
 
