@@ -267,14 +267,30 @@ class AreaBox:
         layout.addWidget(label)
         label.setText(f"Area box {self.index}")
 
+        # Box size selector
         combo = QComboBox()
         for i, x in enumerate(area_boxes.texture_sizes):
-            combo.addItem(f"Type {i+1} ({x[0]}×{x[1]})")
+            combo.addItem(f"{x[0]}×{x[1]}")
         layout.addWidget(combo)
-
         combo.setCurrentIndex(self.texture_index)
         combo.currentIndexChanged.connect(self.change_type)
 
+        # Area name
+        name_edit = NameTextureEditor(
+            map_name_static_c,
+            36 + self.index,
+            f'gArea{self.index}PositionNameENGTex',
+            f'{oot}/assets/textures/map_name_static/'
+                f'_custom_areea{self.index}_position_name_eng.ia8.png',
+            (80, 32),
+            text_params={
+                'typeface':'rocknroll',
+                'stroke_width':4
+            }
+        )
+        layout.addWidget(name_edit)
+
+        # Scene List
         label = QLabel()
         label.setText("Scenes in this area:")
         layout.addWidget(label)
@@ -465,13 +481,14 @@ class DotItem(DataItem):
 
 
 class NameTextureEditor(QWidget):
-    def __init__(self, c_path, include_index, decl, custom_path, size, *a, **kw):
+    def __init__(self, c_path, include_index, decl, custom_path, size, text_params={}, *a, **kw):
         super().__init__(*a, *kw)
         self.custom_path = custom_path
         self.c_path = c_path
         self.size = size
         self.include_index = include_index
         self.decl = decl 
+        self.text_params = text_params
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0,0,0,0)
@@ -523,7 +540,8 @@ class NameTextureEditor(QWidget):
         self.load_name_image()
 
     def text_edited(self, new_text):
-        render_text(new_text, self.size, self.custom_path)
+        new_text = new_text.replace('\\n', '\n')
+        render_text(new_text, self.size, self.custom_path, **self.text_params)
 
         image = QPixmap(self.custom_path)
         self.new_name_label.setPixmap(image)
@@ -560,7 +578,7 @@ class Dot:
             f'gPoint{index}NameENGTex',
             f'{oot}/assets/textures/map_name_static/'
                 f'_custom_point{index}_name_eng.ia4.png',
-            (128, 16)
+            (128, 16),
         )
         layout.addWidget(name_edit)
 

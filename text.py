@@ -10,12 +10,13 @@ from .common_utils import *
 def get_font(typeface, size):
     path = {
         'chiaro': 'FOT-ChiaroStd-B.otf',
-        'kokinedo': 'FOT-KokinEdo Std EB.otf'
+        'kokinedo': 'FOT-KokinEdo Std EB.otf',
+        'rocknroll': 'FOT-RocknrollStd-DB.otf'
     }[typeface]
     return PIL.ImageFont.truetype(path, size)
 
 
-def render_text(text, out_size, path, typeface='chiaro'):
+def render_text(text, out_size, path, typeface='chiaro', stroke_width=2):
     """
     Render a text string to an image. Useful for title cards and other
     UI text.
@@ -28,8 +29,6 @@ def render_text(text, out_size, path, typeface='chiaro'):
     ugly. We may have to ditch PIL to do this properly.
     """
     log(f"Render {text} to {path}")
-
-    stroke_width = 2
 
     font_size = out_size[1]
     font = get_font(typeface, font_size)
@@ -48,8 +47,14 @@ def render_text(text, out_size, path, typeface='chiaro'):
         text,
         font=font,
         stroke_width=stroke_width,
-        fill=(255, 255, 255, 255),
+        fill=(0,0,0,255),
         stroke_fill=(0, 0, 0, 255)
+    )
+    draw.text(
+        (1, 1),
+        text,
+        font=font,
+        fill=(255, 255, 255, 255),
     )
 
     scale_x = min(1, out_size[0] / text_image.size[0])

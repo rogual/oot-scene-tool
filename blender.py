@@ -195,7 +195,6 @@ def render_title_card():
     if not app.scene.display_name:
         raise Exception("Please set the scene's display name.")
 
-    # Title Card
     name = z64c.get_english_title_card_asset_name(
         app.scene.oot_dir,
         app.scene.enum_name
@@ -203,47 +202,6 @@ def render_title_card():
     oot = app.scene.oot_dir
     path = f'{oot}/assets/textures/place_title_cards/{name}.ia8.png'
     render_text(app.scene.display_name, (144, 24), path)
-
-    # World map textures
-    overworld_index = app.scene.index - 81
-    if 0 <= overworld_index < 22:
-        # -- Position Name --
-        # Position names are in map_name_static, after the point names,
-        # in scene order. They are 80x32 ia8 textures.
-        # They show up in the "Current Location" area on the world map.
-        # They are referred to in the code as "position names" or MAP_NAME_TEX2.
-        oot = app.scene.oot_dir
-        i = app.scene.index
-        path = f'{oot}/assets/textures/map_name_static/_custom_scene{i}_position_name_eng.ia8.png'
-        render_text(app.scene.display_name, (80, 32), path, typeface='kokinedo')
-
-        diff = z64c.ReplaceIncludes(
-            path='assets/textures/map_name_static/map_name_static.c',
-            names=[
-                f'gScene{i}PositionNameENGTex'
-            ],
-            includes=[
-                path.replace('.png', '.inc.c').replace('assets', 'build/assets')
-            ],
-            first_index=36 + overworld_index
-        )
-        z64c.install_diffs(oot, [diff])
-
-        # -- Point Name --
-        # Point names (also MAP_NAME_TEX1) are displayed for the world
-        # map point your cursor is on.
-        #
-        # World map points are not connected to scenes at all. Each
-        # one just has a position and a name texture, and is enabled
-        # or disabled based on a bunch of quest flags and inventory
-        # items.
-        #
-        # Many points share names with scenes, but some, like "Hylia
-        # Lakeside", do not.
-        #
-        # We don't support point names for now. Maybe in the
-        # future. But they don't really belong in a scene tool, having
-        # no real connection to scenes.
 
 
 @define_operator
