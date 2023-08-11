@@ -1,5 +1,3 @@
-
-
 import sys
 import os
 import re
@@ -9,7 +7,7 @@ import textwrap
 import functools
 import collections
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
@@ -26,19 +24,26 @@ global_offset = (108, 58)
 
 oot = '/Users/me/Projects/Contrib/oot'
 
-'''
-12 map points
-Flags in worldMapPoints[]
-Positions in mapPageVtx[124 + i * 4], 4 verts each
-'''
+map_name_static_c = 'assets/textures/map_name_static/map_name_static.c'
+kaleido_map_c = 'src/overlays/misc/ovl_kaleido_scope/z_kaleido_map_PAL.c'
+kaleido_scope_c = 'src/overlays/misc/ovl_kaleido_scope/z_kaleido_scope_PAL.c'
 
-
-map_name_static_c = f'assets/textures/map_name_static/map_name_static.c'
-kaleido_map_c = f'src/overlays/misc/ovl_kaleido_scope/z_kaleido_map_PAL.c'
-kaleido_scope_c = f'src/overlays/misc/ovl_kaleido_scope/z_kaleido_scope_PAL.c'
+langs = ['eng', 'ger', 'fra']
 
 box_tint = QColor(100, 255,255,255)
 name_tint = QColor(150,255,255,255)
+
+
+def get_nth_include_as_png(c_path, i):
+    with open(f'{oot}/{c_path}', 'rt') as f:
+        c = f.read()
+
+    ms = list(re.finditer(r'^#include "([^"]*?\.inc\.c)"', c, re.MULTILINE))
+    m = ms[i]
+    path = m.group(1)
+    path = path.replace('.inc.c', '.png')
+    return path
+
 
 def tint_pixmap(pixmap, color):
     tinted = QImage(pixmap)
@@ -56,7 +61,6 @@ def tint_pixmap(pixmap, color):
     p.end()
 
     return QPixmap(tinted)
-
 
 
 def load_mask(path, color):
@@ -95,13 +99,23 @@ class Sprite:
     def inspect(self, layout):
         pass
 
+
 class Sprites:
+    """
+    Every object in the world map except for the area boxes has its position
+    stored in a few arrays, which we'll call “sprite arrays”. These then
+    get expanded to quads and put into the kaleidoscope vertex arrays.
+
+    This class can read the sprites, assign 'kinds' to them, and save back
+    their positions.
+    """
     def __init__(self):
+        # There's a decomp PR to give them proper names, but for now the
+        # sprite arrays just have these D_ identifiers.
         pos_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AEC0')
         pos_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AF78')
         size_x = z64c.read_array(oot, kaleido_scope_c, 'D_8082AAEC')
         size_y = z64c.read_array(oot, kaleido_scope_c, 'D_8082AB2C')
-        n = len(pos_x)
 
         def sign(x):
             return x if x < 0x8000 else x - 65536
@@ -132,15 +146,14 @@ class Sprites:
         return [x for x in self.objects if x.kind in kind]
 
     def save_positions(self):
-        path = 'src/overlays/misc/ovl_kaleido_scope/z_kaleido_scope_PAL.c'
         diff_x = z64c.CArray(
-            path=path,
-            decl='D_8082AEC0', # World Map Sprites X
+            path=kaleido_scope_c,
+            decl='D_8082AEC0',  # World Map Sprites X
             value=[sprite.pos[0] for sprite in self.objects]
         )
         diff_y = z64c.CArray(
-            path=path,
-            decl='D_8082AF78', # World Map Sprites Y
+            path=kaleido_scope_c,
+            decl='D_8082AF78',  # World Map Sprites Y
             value=[sprite.pos[1] for sprite in self.objects]
         )
         z64c.install_diffs(oot, [diff_x, diff_y])
@@ -149,6 +162,7 @@ sprites = Sprites()
 
 
 class DataItem(QGraphicsPixmapItem):
+    """QGraphicsItem representing an editable thing in the world map."""
     def __init__(self, data, pixmap):
         super().__init__(pixmap)
         self.data = data
@@ -157,21 +171,28 @@ class DataItem(QGraphicsPixmapItem):
 
 
 class Table:
+    """
+    This editor is organized into "tables", which work a bit like database
+    tables, except instead of a database, we're reading and writing from
+    the OOT decomp repo.
+
+    Each table handles a different kind of editable thing:
+    - Map Dots
+    - Area Boxes
+    - Clouds
+    - UI Labels
+
+    """
     item_class = DataItem
 
 
 @dataclass
-class UILabel:
+class SpriteRef:
+    """
+    Data objects that are represented by sprites. They just reference an
+    underlying Sprite and use its pos and size.
+    """
     sprite: object
-    preview_index: int
-
-    @property
-    def texture(self):
-        if self.sprite.kind == 'place_name':
-            return ui_labels.place_name_texture
-
-        if self.sprite.kind == 'current_position_label':
-            return ui_labels.current_position_labels[self.preview_index]
 
     @property
     def pos(self):
@@ -181,44 +202,93 @@ class UILabel:
     def size(self):
         return self.sprite.size
 
+
+@dataclass
+class UILabelCurrentPositionLabel(SpriteRef):
+    language_index: int = 0
+
+    @property
+    def texture(self):
+        return ui_labels.current_position_labels[self.language_index]
+
     def inspect(self, layout):
-        if self.sprite.kind == 'place_name':
-            layout.addWidget(QLabel("Current Place Name"))
+        layout.addWidget(QLabel("Current Position Label"))
 
-        if self.sprite.kind == 'current_position_label':
-            layout.addWidget(QLabel("Current Position Label"))
+        combo = QComboBox()
+        for i, lang in enumerate(langs):
+            combo.addItem(lang)
+        layout.addWidget(combo)
 
-            langs = ['eng', 'fra', 'ger']
+        combo.setCurrentIndex(self.language_index)
+        combo.currentIndexChanged.connect(self.set_language_index)
 
-            combo = QComboBox()
-            for i, lang in enumerate(langs):
-                combo.addItem(lang)
-            layout.addWidget(combo)
-
-            combo.setCurrentIndex(self.preview_index)
-            combo.currentIndexChanged.connect(self.set_preview_index)
-
-    def set_preview_index(self, index):
-        self.preview_index = index
+    def set_language_index(self, index):
+        self.language_index = index
         window.load(ui_labels)
-    
+
+
+@dataclass
+class UILabelPlaceName(SpriteRef):
+    language_index: int = 0
+    area_index: int = 0
+
+    @property
+    def texture(self):
+        return ui_labels.place_name_texture(self.area_index, self.language_index)
+
+    def inspect(self, layout):
+
+        layout.addWidget(QLabel("Current Area Name"))
+
+        combo = QComboBox()
+        for i, lang in enumerate(langs):
+            combo.addItem(lang)
+        layout.addWidget(combo)
+
+        combo.setCurrentIndex(self.language_index)
+        combo.currentIndexChanged.connect(self.set_language_index)
+
+        layout.addWidget(QLabel("Preview Area"))
+        x = QSpinBox()
+        x.setMinimum(0)
+        x.setMaximum(21)
+        x.setValue(self.area_index)
+        x.valueChanged.connect(self.set_area_index)
+        layout.addWidget(x)
+
+    def set_language_index(self, index):
+        self.language_index = index
+        window.load(ui_labels)
+
+    def set_area_index(self, index):
+        self.area_index = index
+        window.load(ui_labels)
+
 
 class UILabels(Table):
+    """
+    There are only two UI labels:
+    - The "Current Position" label
+    - The name of the current area just below it.
+    """
     name = "UI Labels"
 
     current_position_labels = [
-        load_mask(f'{oot}/assets/textures/icon_item_{nlang}_static/pause_current_position_{lang}.i4.png', QColor(0, 0, 0, 255))
-        for nlang, lang in [('nes', 'eng'), ('fra', 'fra'), ('ger', 'ger')]
+        load_mask(
+            f'{oot}/assets/textures/icon_item_{nlang}_static/'
+            f'pause_current_position_{lang}.i4.png',
+            QColor(0, 0, 0, 255)
+        )
+        for nlang, lang in [('nes', 'eng'), ('ger', 'ger'), ('fra', 'fra')]
     ]
-
-    place_name_texture = tint_pixmap(QPixmap(
-        f'{oot}/assets/textures/map_name_static/kakariko_village_position_name_eng.ia8.png'
-    ), name_tint)
 
     def __init__(self):
         self.objects = [
-            UILabel(sprite=sprite, preview_index=0)
-            for sprite in sprites.objects_of_kind(('place_name', 'current_position_label'))
+            UILabelPlaceName(sprite=sprite)
+            for sprite in sprites.objects_of_kind('place_name')
+        ] + [
+            UILabelCurrentPositionLabel(sprite=sprite)
+            for sprite in sprites.objects_of_kind('current_position_label')
         ]
 
     def set_and_save_positions(self, positions):
@@ -226,8 +296,22 @@ class UILabels(Table):
             o.sprite.pos = pos
         sprites.save_positions()
 
-ui_labels = UILabels()
+    def place_name_texture(self, area_index, language_index):
+        png_path = get_nth_include_as_png(
+            map_name_static_c,
+            36 +
+            22 * language_index +
+            area_index
+        )
+        png_path = f'{oot}/{png_path}'
+        return tint_pixmap(QPixmap(png_path), name_tint)
 
+    def area_selected(self, index):
+        for object in self.objects:
+            if isinstance(object, UILabelPlaceName):
+                object.set_area_index(index)
+
+ui_labels = UILabels()
 
 
 class AreaBoxItem(DataItem):
@@ -262,6 +346,12 @@ class AreaBox:
         self.texture_index = index
         window.load(area_boxes)
 
+    def on_select(self):
+        ui_labels.area_selected(self.index)
+
+    def name_texture_changed(self):
+        window.load(ui_labels)
+
     def inspect(self, layout):
         label = QLabel()
         layout.addWidget(label)
@@ -280,14 +370,17 @@ class AreaBox:
             map_name_static_c,
             36 + self.index,
             f'gArea{self.index}PositionNameENGTex',
-            f'{oot}/assets/textures/map_name_static/'
-                f'_custom_areea{self.index}_position_name_eng.ia8.png',
+            (
+                f'{oot}/assets/textures/map_name_static/'
+                f'_custom_area{self.index}_position_name_eng.ia8.png'
+            ),
             (80, 32),
             text_params={
-                'typeface':'rocknroll',
-                'stroke_width':4
+                'typeface': 'rocknroll',
+                'stroke_width': 4
             }
         )
+        name_edit.saved.connect(self.name_texture_changed)
         layout.addWidget(name_edit)
 
         # Scene List
@@ -297,13 +390,20 @@ class AreaBox:
 
         label = QLabel()
         label.setFont(window.code_font)
-        layout.addWidget(label)
         label.setText('\n'.join(
             area_scenes.scenes_by_area.get(self.index, [])
         ))
-    
+
+        area = QScrollArea()
+        area.setWidget(label)
+        layout.addWidget(area)
+
 
 class AreaBoxes:
+    """
+    Boxes that show where the current area is on the map. One per
+    area. Only one is ever shown at a time.
+    """
     name = "Boxes"
     item_class = AreaBoxItem
 
@@ -335,7 +435,10 @@ class AreaBoxes:
         assert len(set(zip(texture_indices, sizes))) == len(set(texture_indices))
 
     def get_box_texture_path(self, index):
-        return f'{oot}/assets/textures/icon_item_field_static/world_map_area_box_{index+1}.ia4.png'
+        return (
+            f'{oot}/assets/textures/icon_item_field_static/'
+            f'world_map_area_box_{index+1}.ia4.png'
+        )
 
     @functools.cache
     def get_box_texture(self, index):
@@ -361,44 +464,13 @@ class AreaBoxes:
 area_boxes = AreaBoxes()
 
 
-@dataclass
-class Cloud:
-    sprite: object
-    index: int
-    texture_index: int
-    flag: int
-
-    @property
-    def texture(self):
-        return clouds.get_cloud_texture(self.texture_index)
-
-    @property
-    def pos(self):
-        return self.sprite.pos
-
-    @property
-    def size(self):
-        return self.sprite.size
-
-    def inspect(cloud, layout):
-        label = QLabel()
-        layout.addWidget(label)
-        label.setText(f"Cloud {cloud.index}")
-
-        label = QLabel()
-        layout.addWidget(label)
-        label.setText(f"Covers area {cloud.flag}")
-
-        label = QLabel()
-        label.setFont(window.code_font)
-        layout.addWidget(label)
-        label.setText('\n'.join(
-            area_scenes.scenes_by_area.get(cloud.flag, [])
-        ))
-
-
 class Clouds(Table):
+    """
+    Clouds that cover map areas until the player visits them. Each
+    one has a “flag” which is just the ID of the area it covers.
+    """
     name = "Clouds"
+
     def __init__(self):
         cloud_sprites = sprites.objects_of_kind('cloud')
         tex = z64c.read_array(oot, kaleido_map_c, 'cloudTexs')
@@ -424,22 +496,54 @@ class Clouds(Table):
         ]
 
     def get_cloud_texture_path(self, index):
-        return f'{oot}/assets/textures/icon_item_field_static/world_map_cloud_{index+1}.i4.png'
+        return (
+            f'{oot}/assets/textures/icon_item_field_static/'
+            f'world_map_cloud_{index+1}.i4.png'
+        )
 
     @functools.cache
     def get_cloud_texture(self, index):
-        mask = QImage(self.get_cloud_texture_path(index))
-
-        image = QImage(mask.size(), QImage.Format_ARGB32)
-        # gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 235, 235, 235, pauseCtx->alpha);
-        image.fill(QColor(235, 235, 235, 255))
-        image.setAlphaChannel(mask)
-        return QPixmap(image)
+        return load_mask(self.get_cloud_texture_path(index), QColor(235, 235, 235, 255))
 
     def set_and_save_positions(self, positions):
         for o, new_pos in zip(self.objects, positions):
             o.sprite.pos = new_pos
         sprites.save_positions()
+
+
+@dataclass
+class Cloud(SpriteRef):
+    index: int
+    texture_index: int
+    flag: int
+
+    @property
+    def texture(self):
+        return clouds.get_cloud_texture(self.texture_index)
+
+    def inspect(cloud, layout):
+        label = QLabel()
+        layout.addWidget(label)
+        label.setText(f"Cloud {cloud.index}")
+
+        label = QLabel()
+        layout.addWidget(label)
+        label.setText(f"Covers area {cloud.flag}")
+
+        # Scene list  
+        label = QLabel()
+        label.setFont(window.code_font)
+        label.setText('\n'.join(
+            area_scenes.scenes_by_area.get(cloud.flag, [])
+        ))
+
+        area = QScrollArea()
+        area.setWidget(label)
+        layout.addWidget(area)
+
+    def on_select(self):
+        ui_labels.area_selected(self.flag)
+
 
 clouds = Clouds()
 
@@ -480,14 +584,117 @@ class DotItem(DataItem):
         return super().itemChange(change, value)
 
 
+@dataclass
+class Dot(SpriteRef):
+    dot_index: int
+
+    @property
+    def texture(self):
+        return Dots.texture
+
+    def inspect(self, layout):
+        index = self.dot_index
+
+        # Add a text field (line edit) to the sidebar
+        label = QLabel()
+        label.setText(f"Map dot {index}")
+        layout.addWidget(label)
+
+        name_edit = NameTextureEditor(
+            map_name_static_c,
+            index,
+            f'gPoint{index}NameENGTex',
+            (
+                f'{oot}/assets/textures/map_name_static/'
+                f'_custom_point{index}_name_eng.ia4.png'
+            ),
+            (128, 16),
+        )
+        layout.addWidget(name_edit)
+
+        conditions_widget = QWidget()
+        conditions_layout = QVBoxLayout(conditions_widget)
+        conditions_layout.setContentsMargins(0,0,0,0)
+
+        conditions_layout.addWidget(QLabel("Conditions:"))
+        for chunk in find_map_point_conditions(index):
+            w = QLabel()
+            w.setFont(window.code_font)
+            w.setText(textwrap.dedent(chunk))
+            conditions_layout.addWidget(w)
+
+        area = QScrollArea()
+        area.setWidget(conditions_widget)
+        layout.addWidget(area)
+
+
+class Dots(Table):
+    """
+    Dots on the world map. These aren't connected at all to scenes or areas. Each
+    dot just has a position and a bunch of if-statements in z_kaleido_scope_PAL.c
+    that determine whether to show the dot and whether to highlight it in some way.
+
+    Each dot also has a name texture, which is shown underneath the map when you
+    select that dot on the pause screen.
+
+    Dots are ordered left-to-right, and if you rearrange them, it'll break the
+    navigation on the pause screen. It's tricky to rearrange them properly, because
+    you'd have to go in and change all the conditions in the code too. So, we just
+    disallow moving dots past each other on the X axis.
+    """
+    name = "Dots"
+    item_class = DotItem
+    texture = QPixmap(
+        f'{oot}/assets/textures/icon_item_field_static/world_map_dot.ia8.png'
+    )
+
+    def __init__(self):
+        self.objects = [
+            Dot(
+                sprite=sprite,
+                dot_index=i,
+            )
+            for i, sprite in enumerate(sprites.objects_of_kind('point'))
+        ]
+
+    def set_and_save_positions(self, positions):
+        for o, new_pos in zip(self.objects, positions):
+            o.sprite.pos = new_pos
+        sprites.save_positions()
+
+dots = Dots()
+
+
+def find_map_point_conditions(index):
+    with open(f'{oot}/{kaleido_scope_c}', 'rt') as f:
+        c = f.read()
+
+    chunks = re.split(r' *\n *\n', c)
+    needle = f'pauseCtx->worldMapPoints[{index}] = '
+    chunks = [x for x in chunks if needle in x]
+    return chunks
+
+
+class GraphicsView(QGraphicsView):
+    mouse_released = pyqtSignal()
+    def mouseReleaseEvent(self, x):
+        super().mouseReleaseEvent(x)
+        self.mouse_released.emit()
+
+
 class NameTextureEditor(QWidget):
+    """
+    GUI for editing name textures of dots and areas.
+    """
+    saved = pyqtSignal()
+
     def __init__(self, c_path, include_index, decl, custom_path, size, text_params={}, *a, **kw):
         super().__init__(*a, *kw)
         self.custom_path = custom_path
         self.c_path = c_path
         self.size = size
         self.include_index = include_index
-        self.decl = decl 
+        self.decl = decl
         self.text_params = text_params
 
         layout = QVBoxLayout(self)
@@ -506,18 +713,13 @@ class NameTextureEditor(QWidget):
         new_name_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(new_name_label)
 
-        use_name_btn = QPushButton("Use")
+        use_name_btn = self.use_name_btn = QPushButton("Use")
         use_name_btn.clicked.connect(self.use_new_name)
+        use_name_btn.setEnabled(False)
         layout.addWidget(use_name_btn)
 
     def get_path_from_c(self):
-        with open(f'{oot}/{self.c_path}', 'rt') as f:
-            c = f.read()
-
-        ms = list(re.finditer(r'^#include "([^"]*?\.inc\.c)"', c, re.MULTILINE))
-        m = ms[self.include_index]
-        path = m.group(1)
-        path = path.replace('.inc.c', '.png')
+        path = get_nth_include_as_png(self.c_path, self.include_index)
         if path.startswith('assets'):
             path = f'{oot}/{path}'
         return path
@@ -538,100 +740,14 @@ class NameTextureEditor(QWidget):
         )
         z64c.install_diffs(oot, [diff])
         self.load_name_image()
+        self.saved.emit()
 
     def text_edited(self, new_text):
-        new_text = new_text.replace('\\n', '\n')
+        self.use_name_btn.setEnabled(new_text != '')
         render_text(new_text, self.size, self.custom_path, **self.text_params)
 
         image = QPixmap(self.custom_path)
         self.new_name_label.setPixmap(image)
-            
-        
-@dataclass
-class Dot:
-    sprite: object
-    dot_index: int
-
-    @property
-    def texture(self):
-        return Dots.texture
-
-    @property
-    def pos(self):
-        return self.sprite.pos
-
-    @property
-    def size(self):
-        return self.sprite.size
-
-    def inspect(self, layout):
-        index = self.dot_index
-
-        # Add a text field (line edit) to the sidebar
-        label = QLabel()
-        label.setText(f"Map dot {index}")
-        layout.addWidget(label)
-
-        name_edit = NameTextureEditor(
-            map_name_static_c,
-            index,
-            f'gPoint{index}NameENGTex',
-            f'{oot}/assets/textures/map_name_static/'
-                f'_custom_point{index}_name_eng.ia4.png',
-            (128, 16),
-        )
-        layout.addWidget(name_edit)
-
-        conditions_widget = QWidget()
-        conditions_layout = QVBoxLayout(conditions_widget)
-        conditions_layout.setContentsMargins(0,0,0,0)
-        layout.addWidget(conditions_widget)
-
-        conditions_layout.addWidget(QLabel("Conditions:"))
-        for chunk in find_map_point_conditions(index):
-            w = QLabel()
-            w.setFont(window.code_font)
-            w.setText(textwrap.dedent(chunk))
-            conditions_layout.addWidget(w)
-
-
-class Dots(Table):
-    name = "Dots"
-    item_class = DotItem
-    texture = QPixmap(f'{oot}/assets/textures/icon_item_field_static/world_map_dot.ia8.png')
-
-    def __init__(self):
-        self.objects = [
-            Dot(
-                sprite=sprite,
-                dot_index=i,
-            )
-            for i, sprite in enumerate(sprites.objects_of_kind('point'))
-        ]
-
-    def set_and_save_positions(self, positions):
-        for o, new_pos in zip(self.objects, positions):
-            o.sprite.pos = new_pos
-        sprites.save_positions()
-
-dots = Dots()
-
-
-def find_map_point_conditions(index):
-    with open(f'{oot}/src/overlays/misc/ovl_kaleido_scope/z_kaleido_scope_PAL.c', 'rt') as f:
-        c = f.read()
-
-    chunks = re.split(r' *\n *\n', c)
-    needle = f'pauseCtx->worldMapPoints[{index}] = '
-    chunks = [x for x in chunks if needle in x]
-    return chunks
-
-
-class GraphicsView(QGraphicsView):
-    mouse_released = pyqtSignal()
-    def mouseReleaseEvent(self, x):
-        super().mouseReleaseEvent(x)
-        self.mouse_released.emit()
 
 
 class WorldMapEditor(QMainWindow):
@@ -723,9 +839,9 @@ class WorldMapEditor(QMainWindow):
             items.append(item)
             item.table = table
             x, y = data.pos
-            y*=-1
-            x+=global_offset[0]
-            y+=global_offset[1]
+            y *= -1
+            x += global_offset[0]
+            y += global_offset[1]
 
             pos = (x*global_scale, y*global_scale)
             item.setPos(pos[0], pos[1])
@@ -735,14 +851,11 @@ class WorldMapEditor(QMainWindow):
 
         table.loaded_positions = [(x.pos().x(), x.pos().y()) for x in items]
 
-
     def mouse_released(self):
         for table in self.tables:
             self.save_moved_items(table)
 
-
     def save_moved_items(self, table):
-
         def item_for(o):
             for item in self.scene.items():
                 if isinstance(item, DataItem) and item.data is o:
@@ -786,6 +899,11 @@ class WorldMapEditor(QMainWindow):
             self.set_item_z(item, 1)
 
             self.make_inspector(item)
+
+            if isinstance(item, DataItem):
+                if hasattr(item.data, 'on_select'):
+                    item.data.on_select()
+
         else:
             self.make_inspector(None)
 
@@ -804,6 +922,7 @@ class WorldMapEditor(QMainWindow):
             item.data.inspect(layout)
 
 
-window = WorldMapEditor()
-window.show()
-sys.exit(app.exec_())
+if __name__ == '__main__':
+    window = WorldMapEditor()
+    window.show()
+    sys.exit(app.exec_())
