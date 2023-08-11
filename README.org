@@ -69,7 +69,14 @@ The scene's name will be rendered to a texture in an approximation of the style 
 
 ** Overworld minimaps
 
-Not tested.
+Overworld minimaps can also be exported. They're similar to dungeon minimaps with a few differences:
+- They don't have to be 96x85
+- There is one minimap per scene, showing all of the scene's rooms
+- Stylistically, they are ususally more detailed, and they lack the outer rectangle that's drawn around dungeon minimaps.
+
+There is a rudimentary material-based system for adding detail to overworld minimaps. If you give a material a custom property called =MinimapColor= and set it to an integer, 0-7 inclusive, then surfaces with that material will be drawn into the minimap in that color, where 0 is darkest and 7 is lightest. The default color is 3.
+
+Any surfaces with actor collision disabled are not included in the overworld minimap.
 
 ** Lighting
 
@@ -83,11 +90,11 @@ In Blender, a mesh can have any number of "Colour Attributes". These are like la
 
 *** Fast64 vertex colour support
 
-If your scene geometry has a colour attribute called "Col", Fast64 will export it as part of your display list.
+If your scene geometry has a colour attribute called =Col=, Fast64 will export it as part of your display list.
 
 *** OOT Scene Tool's vertex colour tools
 
-OOT Scene Tool supports several layers of vertex colours, which are combined at export into the single "Col" layer that Fast64 expects.
+OOT Scene Tool supports several layers of vertex colours, which are combined at export into the single =Col= layer that Fast64 expects.
 
 =AO= is an ambient occlusion layer which is intended to be generated automatically by the "Bake AO" tool. It gives an approximation of non-directional, ambient lighting. Corners will be darker and open surfaces will be lighter.
 
