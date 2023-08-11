@@ -113,6 +113,9 @@ def get_all_changes(repo_path, all_items):
 
 def to_c(value, format_hint=''):
     if isinstance(value, list):
+        # C doesn't like empty arrays
+        if value == []:
+            value = [0]
         val_strs = map(to_c, value)
         if format_hint == 'floor_ids':
             val_strs = [x.rjust(4) for x in val_strs]
