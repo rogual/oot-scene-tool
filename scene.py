@@ -94,6 +94,9 @@ class Scene:
 
         planes = floor_planes + [ztop]
 
+        if floor_planes == []:
+            return [Floor(self, 0, -9999, 9999)]
+
         return [
             Floor(self, index, low, high)
             for index, (low, high) in enumerate(itertools.pairwise(planes))

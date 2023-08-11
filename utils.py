@@ -97,108 +97,6 @@ def clip_object(obj1, obj2):
     #bpy.ops.object.modifier_apply(apply_as='DATA', modifier='mod')
 
 
-@dataclass
-class Vec2:
-    x: float
-    y: float
-
-    def __getitem__(self, i):
-        return [self.x, self.y][i]
-
-    def __setitem__(self, i, v):
-        if i == 0: self.x = v
-        elif i == 1: self.y = v
-        else: raise IndexError(i)
-
-    def __add__(self, o):
-        return Vec2(self.x + o.x, self.y + o.y)
-
-    def __sub__(self, o):
-        return Vec2(self.x - o.x, self.y - o.y)
-
-    def __mul__(self, f):
-        return Vec2(self.x * f, self.y * f)
-
-    def __iter__(self):
-        return iter([self.x, self.y])
-
-
-@dataclass
-class Vec3:
-    x: float
-    y: float
-    z: float
-
-    def __getitem__(self, i):
-        return [self.x, self.y, self.z][i]
-
-    def __setitem__(self, i, v):
-        if i == 0: self.x = v
-        elif i == 1: self.y = v
-        elif i == 2: self.z = v
-        else: raise IndexError(i)
-
-
-@dataclass
-class Rect:
-    origin: Vec2
-    size: Vec2
-
-    @classmethod
-    def centered(cls, c, size):
-        return Rect(
-            c - size * .5,
-            size
-        )
-
-    @property
-    def min(self):
-        return self.origin
-
-    @min.setter
-    def min(self, p):
-        self.origin = p
-
-    @property
-    def max(self):
-        return self.origin + self.size
-
-    @max.setter
-    def max(self, p):
-        self.size = p - self.origin
-
-    @classmethod
-    def bounding_points(cls, *points):
-        log('bp', points)
-        r = Rect(
-            points[0],
-            Vec2(0, 0)
-        )
-        for p in points[1:]:
-            r = r.bounds_union(Rect(p, Vec2(1, 1)))
-        return r
-
-    def bounds_union(self, o):
-        log(self, o, self.min, o.min)
-        x0 = min(self.min.x, o.min.x)
-        x1 = max(self.max.x, o.max.x)
-        y0 = min(self.min.y, o.min.y)
-        y1 = max(self.max.y, o.max.y)
-        return Rect(Vec2(x0, y0), Vec2(x1 - x0, y1 - y0))
-
-    def expand(self, v):
-        r = Rect(self.origin, self.size)
-        r.origin = r.origin - Vec2(v, v)
-        r.size = r.size + Vec2(2*v, 2*v)
-        return r
-
-    def __add__(self, v):
-        return Rect(
-            self.origin + v,
-            self.size
-        )
-        
-
 def map_rect(from_rect, to_rect):
     ax0, ay0 = from_rect.origin
     bx0, by0 = to_rect.origin
@@ -213,6 +111,7 @@ def map_rect(from_rect, to_rect):
     ])
 
         
+
 
 class Image:
     def __init__(self, key):

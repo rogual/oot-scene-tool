@@ -230,15 +230,18 @@ class SceneMap:
             clipped_obj.data.materials.clear()
             clipped_obj.data.materials.append(mat_room)
 
-            # TODO: Create this node group
-            mod = clipped_obj.modifiers.new('mod', 'NODES')
-            mod.node_group = bpy.data.node_groups['FlipNormals']
+            # We can skip actually clipping it if this is a single-layer room
+            if len(layer.room.layers) > 1:
 
-            clip_object(clipped_obj, layer.floor.volume_object)
+                # TODO: Create this node group
+                mod = clipped_obj.modifiers.new('mod', 'NODES')
+                mod.node_group = bpy.data.node_groups['FlipNormals']
 
-            # TODO: Create this node group
-            mod = clipped_obj.modifiers.new('mod', 'NODES')
-            mod.node_group = bpy.data.node_groups['FlipNormals']
+                clip_object(clipped_obj, layer.floor.volume_object)
+
+                # TODO: Create this node group
+                mod = clipped_obj.modifiers.new('mod', 'NODES')
+                mod.node_group = bpy.data.node_groups['FlipNormals']
         return collection
         
 

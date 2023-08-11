@@ -59,7 +59,7 @@ def split(scene):
         cull(room, room_geom)
 
         if len(room_geom.data.vertices) == 0:
-            raise Exception("Room {room} has no vertices")
+            raise Exception(f"{room} has no vertices")
 
 
 def cull(room, geom):
