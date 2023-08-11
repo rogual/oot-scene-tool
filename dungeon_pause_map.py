@@ -181,19 +181,6 @@ class DungeonPauseMap:
                 to_path='build/' + dest
             )
 
-        # Update the main asset file to include our generated .inc.c files.
-        yield z64c.ReplaceIncludes(
-            path='assets/textures/map_48x85_static/map_48x85_static.c',
-            names=[
-                f'gScene{self.scene.index}'
-                f'PauseScreenMapFloor{page.floor.index}{side}Tex'
-                for page in self.pages
-                for side in ['Left', 'Right']
-            ],
-            includes=map_48x85_static_includes,
-            first_index=0
-        )
-
         # Install the title image
         title_path = f'assets/textures/icon_item_nes_static/pause_scene_{self.scene.index}_title_eng.ia8.png'
         yield z64c.InstallFile(
@@ -251,6 +238,20 @@ class DungeonPauseMap:
             self.scene.index,
             pad_front([2 * i for i in range(len(self.pages))], 8, 0)
         )
+
+        # Update the main asset file to include our generated .inc.c files.
+        yield z64c.ReplaceIncludes(
+            path='assets/textures/map_48x85_static/map_48x85_static.c',
+            names=[
+                f'gScene{self.scene.index}'
+                f'PauseScreenMapFloor{page.floor.index}{side}Tex'
+                for page in self.pages
+                for side in ['Left', 'Right']
+            ],
+            includes=map_48x85_static_includes,
+            first_index=2 * sum(num_floors[x] for x in range(self.scene.index))
+        )
+
 
         # Skull icon indicating boss floor
         yield z64c.CArrayItem(
