@@ -1,3 +1,5 @@
+import collections
+
 import PIL.Image
 
 from . import image_utils
@@ -154,8 +156,8 @@ class OverworldMinimap:
 
         # Compass data
         transform = minimap_utils.get_world_to_compass_mark_transform(
-            minimap_pos,
-            Vec2(self.minimap_size[0], self.minimap_size[1]),
+            (298 - 96, 222 - 85), # Pos of the uncropped render
+            (96, 85), # The size of the uncropped render
             self.camera.camera_pos,
             self.camera.camera_scale,
             self.shift
@@ -195,15 +197,62 @@ class OverworldMinimap:
 
     def render_all(self):
         log("Render OVERWORLD MINIMAP camera")
-        self.scene_map.render_map_camera(self.camera)
+
+        collection = self.scene.helper_collection(
+            "Overworld Minimap"
+        )
+
+        to_split = [ob for ob in bpy.data.objects if ob.type == 'MESH']
+
+        for ob in to_split:
+            map_ob = duplicate_object(ob, collection)
+
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.context.view_layer.objects.active = map_ob
+
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.separate(type='MATERIAL')
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+
+        color_to_objects = collections.defaultdict(list)
+        for ob in collection.all_objects:
+            mat = ob.material_slots[0].material
+            if mat:
+                color_index = mat.get('MinimapColor', 3)
+                color_to_objects[color_index].append(ob)
+                print('ob', ob, 'mat', mat, color_index)
+
+        print(len(color_to_objects), 'color indices')
+
+        layer_colors = []
+        layer_image_paths = []
+        for color, objects in color_to_objects.items():
+            for ob in bpy.data.objects:
+                ob.hide_render = True
+            for ob in objects:
+                ob.hide_render = False
+
+                mat = ob.material_slots[0].material
+                if hasattr(mat, 'ootCollisionProperty'):
+                    if mat.ootCollisionProperty.ignoreActorCollision:
+                        ob.hide_render = True
+
+            print("Render layer", color)
+            self.camera.image=Image(key=('miniraw', 'ow', self.index, 'layer', color))
+            self.camera.collection = None
+            self.scene_map.render_map_camera(self.camera)
+            layer_colors.append(color)
+            layer_image_paths.append(self.camera.image.render_path)
 
         self.minimap_size, self.shift = process_image(
-            self.camera.image.render_path,
+            layer_colors,
+            layer_image_paths,
             self.final_image.render_path
         )
 
 
-def process_image(raw_path, processed_path):
+def process_image(layer_colors, layer_paths, processed_path):
     """
     Take a raw camera render and turn it into a stylized
     map for use in the game.
@@ -211,10 +260,15 @@ def process_image(raw_path, processed_path):
     This is only for overworld minimaps; dungeon minimaps
     are different enough that they have their own function.
     """
-    raw_rgba = PIL.Image.open(raw_path)
-    raw_surface, _, _, raw_alpha = raw_rgba.split()
-    out_image = PIL.Image.new('P', raw_alpha.size)
+    layer_images = [PIL.Image.open(x) for x in layer_paths]
+    layer_masks = [x.split()[3] for x in layer_images]
+    size = layer_images[0].size
+
+    out_image = PIL.Image.new('P', size)
     out_image.putpalette(image_utils.ia4_palette, 'RGBA')
+
+    composed = PIL.Image.new('P', size)
+    composed.putpalette(image_utils.ia4_palette, 'RGBA')
 
     w, h = out_image.size
 
@@ -223,19 +277,30 @@ def process_image(raw_path, processed_path):
     pix_outline = image_utils.ia4(0, 1)
     pix_oob = image_utils.ia4(0, 0)
 
-    # Fill & first outline
+    # Compose layers to 'composed'
+    for i, (layer_color, layer_alpha) in enumerate(zip(layer_colors, layer_masks)):
+        for y in range(h):
+            for x in range(w):
+                p = (x, y)
+                in_alpha = layer_alpha.getpixel(p)
+                if in_alpha != 0:
+                    composed.putpixel(p, image_utils.ia4(layer_color, 1))
+
+    composed.save('/tmp/composed.png')
+    
+    # Copy 'composed' to 'out_image' and add first outline
     for y in range(h):
         for x in range(w):
             p = (x, y)
-            in_alpha = raw_alpha.getpixel(p)
-            if in_alpha == 0:
+            composed_pixel = composed.getpixel(p)
+            if composed_pixel == 0:
                 if any(
-                    image_utils.get(raw_alpha, (x+dx, y+dy), 0) != 0
+                    image_utils.get(composed, (x+dx, y+dy), 0) != 0
                     for (dx, dy) in image_utils.dirs8
                 ):
                     out_image.putpixel(p, pix_wall)
             else:
-                out_image.putpixel(p, pix_ground)
+                out_image.putpixel(p, composed_pixel)
 
     # Second outline with boxy shadow
     for y in range(h):
@@ -297,24 +362,10 @@ def process_image(raw_path, processed_path):
         ))
 
         shift = mathutils.Vector((
-            0,0
+            96 - bounds.max.x,
+            85 - bounds.max.y
         ))
-            
-
-        # Shift to lower-right
-        #shift_x = w - 2 - bounds.max.x
-        #shift_y = h - 2 - bounds.max.y
-
-        #shift = mathutils.Vector((shift_x, shift_y))
-
-        #out_image = out_image.transform(
-        #    (w, h),
-        #    PIL.Image.AFFINE,
-        #    (1, 0, -shift_x,
-        #        0, 1, -shift_y),
-        #    fillcolor=0
-        #)
-
+        print('shift is', shift)
 
     out_image = out_image.convert('RGBA')
     out_image.save(processed_path)
