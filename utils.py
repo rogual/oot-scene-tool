@@ -1,7 +1,15 @@
 from . import app
 from .common_utils import *
 
-log_to_file('/tmp/ootlog.txt')
+try:
+    log_to_file('/tmp/ootlog.txt')
+except FileNotFoundError:
+    # Perhaps a Windows user can contribute a suitable log file path?
+    # For now, we just won't log on Windows. Add your own path here
+    # if you need to debug the tool.
+    # log_to_file(r"C:\Blah\OOT Scene Tool Log.txt")
+    pass
+
 
 import bpy
 import functools
