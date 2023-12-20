@@ -6,20 +6,19 @@ I haven't packaged this up as a proper add-on yet. Here's how I load it:
 - Open blender_text.py in the Blender text editor
 - Press Alt+P to load it.
 - If it loads successfully, you should have an "OOT Scene Tool" panel underneath the Fast64 panels.
+- If you're hacking on the code, you can press the "Reload Tool" button in the panel to reload it.
 
 * Configuring settings
 
 - Configure the decomp path and all other Fast64 scene settings as normal.
 - In the OOT Scene Tool panel, set your scene's display name. This is only used to generate the dungeon map's title image right now, but can be used in the future for title cards and world map captions.
   
-* Setting up your Blender scene
-
 * Features in detail
 ** Room splitting
 
-Fast64 exports one room per object, but I find it easier to model my whole scene as a single object, so this tool performs "Room Splitting".
+Fast64 exports one room per object, but I find it easier to model my whole scene as a single object, so this tool can perform "Room Splitting".
 
-Model your scene as a single object. Call this object =Geom=. Then define "Room Boxes" to specify how it will be split into rooms.
+To use room splitting, model your scene as a single object. Call this object =Geom=. Then define "Room Boxes" to specify how it will be split into rooms.
 
 *** Defining room boxes
 
@@ -57,15 +56,10 @@ Floor planes are used for two things:
 
 Press "Render Maps" to create and export the maps.
 
-- The map textures will be written to =$OOT/build/oot-scene-tool= where =$OOT= is your decomp dir.
+- The map textures will be written to =$OOT/assets/textures= where =$OOT= is your decomp dir.
 - The decomp code will be updated to use them.
+- Intermediate files will be written to =$OOT/build/oot-scene-tool=. It's OK to delete these.
 - The tool will also find and update the map mark data and all other map-related data.
-
-** Title cards
-
-Set your scene's display name in the OOT Scene Tool panel, then press “Render Title Card”.
-
-The scene's name will be rendered to a texture in an approximation of the style OOT uses. This texture will be installed into the appropriate place within the OOT decomp directory and will replace the vanilla title card for your scene.
 
 ** Overworld minimaps
 
@@ -76,11 +70,19 @@ Overworld minimaps can also be exported. They're similar to dungeon minimaps wit
 
 There is a rudimentary material-based system for adding detail to overworld minimaps. If you give a material a custom property called =MinimapColor= and set it to an integer, 0-7 inclusive, then surfaces with that material will be drawn into the minimap in that color, where 0 is darkest and 7 is lightest. The default color is 3.
 
-Any surfaces with actor collision disabled are not included in the overworld minimap.
+Any surfaces with actor collision disabled are not included in the overworld minimap, and neither are any objects with "Ignore Collision" set. Right now this is the only way to exclude surfaces from the minimap.
+
+** Title cards
+
+(You need to have the right fonts installed for this to work, and the fonts are not configurable. Letting you choose your own fonts would be a good improvement, but until then, you can edit =text.py= to make it do what you want.)
+
+Set your scene's display name in the OOT Scene Tool panel, then press “Render Title Card”.
+
+The scene's name will be rendered to a texture in an approximation of the style OOT uses. This texture will be installed into the appropriate place within the OOT decomp directory and will replace the vanilla title card for your scene.
 
 ** Lighting
 
-OOT's indoor scenes use precalculated vertex lighting, which means that every vertex in the scene's geometry is assigned a colour, in addition to its texture coordinates. These colours are assigned at build time and are not dynamic. The textures are then modulated by these vertex colours. These vertex colours can be used to simulate the effects of light and shadow.
+OOT's indoor scenes use precalculated vertex lighting, which means that every vertex in the scene's geometry is assigned a colour, in addition to its texture coordinates. These colours are assigned at build time and are not dynamic. The textures are then modulated by these vertex colours. This can be used to simulate the effects of light and shadow.
 
 This tool can help you assign vertex colours in your scene in order to create lighting effects.
 
