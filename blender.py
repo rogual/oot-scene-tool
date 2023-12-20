@@ -9,8 +9,6 @@ import re
 
 import bpy
 
-from .text import render_text
-
 oot_scene_tool_dir = os.path.dirname(__file__)
 make = '/usr/local/bin/gmake'
 
@@ -46,6 +44,8 @@ if not pil_installed:
 # Why does anyone think Python is good
 import oot_scene_tool
 from oot_scene_tool import scene, scene_map, app, utils, z64c, text, scene_split, lighting, blender
+
+from .text import render_text
 
 
 def reload_this_tool():
