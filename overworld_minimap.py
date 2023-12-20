@@ -202,7 +202,12 @@ class OverworldMinimap:
             "Overworld Minimap"
         )
 
-        to_split = [ob for ob in bpy.data.objects if ob.type == 'MESH']
+        to_split = [
+            ob
+            for ob in bpy.data.objects
+            if ob.type == 'MESH'
+            and not getattr(ob, 'ignore_collision', False)
+        ]
 
         for ob in to_split:
             map_ob = duplicate_object(ob, collection)
