@@ -290,8 +290,6 @@ def process_image(layer_colors, layer_paths, processed_path):
                 in_alpha = layer_alpha.getpixel(p)
                 if in_alpha != 0:
                     composed.putpixel(p, image_utils.ia4(layer_color, 1))
-
-    composed.save('/tmp/composed.png')
     
     # Copy 'composed' to 'out_image' and add first outline
     for y in range(h):
